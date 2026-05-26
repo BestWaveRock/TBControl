@@ -1,0 +1,5 @@
+.build/
+build/
+*.dmg
+*.kext/
+.DS_Store

@@ -1,0 +1,57 @@
+name: Build TBControl
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer || true
+
+      - name: Build KEXT
+        run: |
+          cd Kext
+          make
+
+      - name: Build Swift targets
+        run: |
+          swift build -c release --product tbcontrold
+          swift build -c release --product TBControl
+
+      - name: Package App Bundle
+        run: |
+          BUILD_DIR="build"
+          APP_BUNDLE="$BUILD_DIR/TBControl.app"
+          RELEASE_DIR=".build/release"
+          mkdir -p "$APP_BUNDLE/Contents/MacOS"
+          mkdir -p "$APP_BUNDLE/Contents/Resources"
+          cp "$RELEASE_DIR/TBControl" "$APP_BUNDLE/Contents/MacOS/TBControl"
+          cp "$RELEASE_DIR/tbcontrold" "$APP_BUNDLE/Contents/Resources/tbcontrold"
+          cp -R "Kext/build/DisableTurboBoost.kext" "$APP_BUNDLE/Contents/Resources/DisableTurboBoost.kext"
+          cp "Scripts/TBControl-Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+
+      - name: Create DMG
+        run: |
+          mkdir -p build
+          hdiutil create -volname "TBControl" \
+            -srcfolder build/TBControl.app \
+            -ov -format UDZO \
+            build/TBControl.dmg
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TBControl
+          path: |
+            build/TBControl.dmg
+            build/TBControl.app
+          if-no-files-found: error
