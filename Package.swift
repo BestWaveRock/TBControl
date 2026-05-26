@@ -5,17 +5,10 @@ let package = Package(
     name: "TBControl",
     platforms: [.macOS(.v11)],
     targets: [
-        .target(
-            name: "Csmc",
-            path: "Sources/Csmc",
-            publicHeadersPath: "include",
-            linkerSettings: [.linkedFramework("IOKit")]
-        ),
         .executableTarget(
             name: "tbcontrold",
-            dependencies: ["Csmc"],
-            path: "Sources/tbcontrold",
-            linkerSettings: [.linkedFramework("IOKit")]
+            dependencies: [],
+            path: "Sources/tbcontrold"
         ),
         .executableTarget(
             name: "TBControl",
