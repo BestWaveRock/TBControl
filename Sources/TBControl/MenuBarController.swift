@@ -237,10 +237,12 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
     }
 
     func startRefresh() {
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
             self?.refresh()
         }
-        refreshTimer?.fire()
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+        timer.fire()
     }
 
     private var lastNotifiedState: Bool?

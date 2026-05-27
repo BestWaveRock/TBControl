@@ -50,8 +50,19 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         return touchBar
     }
     
+    @objc private func toggleFullBar() {
+        // This is a placeholder for tapping the Control Strip icon
+        // Usually, tapping the icon in presentSystemModalFunctionBar toggles the modal bar
+    }
+
     func updateStats(temp: Double?, fan: Int?, load: Double, tbEnabled: Bool, battery: Int) {
         let tbIcon = tbEnabled ? "🔥" : "🧊"
+        
+        // Update Control Strip button title if possible
+        if let item = touchBar?.item(forIdentifier: .statsItem), let button = item.view as? NSButton {
+            button.title = "\(tbIcon) TB"
+        }
+
         let tbText = tbEnabled ? "TB On" : "TB Off"
         let tempStr = temp != nil ? String(format: "%.0f°C", temp!) : "—"
         let fanStr = fan != nil ? "\(fan!) rpm" : "—"
@@ -71,6 +82,12 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     
     func touchBar(_ touchBar: NSTouchBar, makeItemForIdentifier identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
         switch identifier {
+        case .statsItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            let button = NSButton(title: "🧊 TB", target: self, action: #selector(toggleFullBar))
+            button.bezelStyle = .rounded
+            item.view = button
+            return item
         case .tbStateItem:
             let item = NSCustomTouchBarItem(identifier: identifier)
             item.view = tbStateLabel

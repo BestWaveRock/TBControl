@@ -79,6 +79,116 @@ class SensorMonitor {
         return SensorData(cpuTemp: finalTemp, fanSpeed: maxFanSpeed)
     }
 
+    func setFanMode(id: Int, isManual: Bool) -> Bool {
+        guard conn != 0 else { return false }
+        
+        // Intel Fan Control logic using "FS! " key
+        let fansMode = Int(readKey("FS! ") ?? 0)
+        var newMode: UInt8 = 0
+        
+        if fansMode == 0 && id == 0 && isManual {
+            newMode = 1
+        } else if fansMode == 0 && id == 1 && isManual {
+            newMode = 2
+        } else if fansMode == 1 && id == 0 && !isManual {
+            newMode = 0
+        } else if fansMode == 1 && id == 1 && isManual {
+            newMode = 3
+        } else if fansMode == 2 && id == 1 && !isManual {
+            newMode = 0
+        } else if fansMode == 2 && id == 0 && isManual {
+            newMode = 3
+        } else if fansMode == 3 && id == 0 && !isManual {
+            newMode = 2
+        } else if fansMode == 3 && id == 1 && !isManual {
+            newMode = 1
+        } else {
+            newMode = UInt8(fansMode)
+        }
+        
+        if fansMode == Int(newMode) { return true }
+        
+        var bytes: [UInt8] = Array(repeating: 0, count: 32)
+        bytes[0] = newMode
+        return writeKey("FS! ", bytes: bytes, size: 2)
+    }
+
+    func setFanSpeed(id: Int, rpm: Int) -> Bool {
+        // First set to manual mode if not already
+        _ = setFanMode(id: id, isManual: true)
+        
+        // FxTg is the target speed key
+        let key = "F\(id)Tg"
+        // Most Intel fans use fpe2 (14.2 fixed point) for target speed
+        let val = UInt16(rpm * 4)
+        var bytes: [UInt8] = Array(repeating: 0, count: 32)
+        bytes[0] = UInt8((val >> 8) & 0xFF)
+        bytes[1] = UInt8(val & 0xFF)
+        
+        return writeKey(key, bytes: bytes, size: 2)
+    }
+
+    func resetFanControl() -> Bool {
+        var bytes: [UInt8] = Array(repeating: 0, count: 32)
+        bytes[0] = 0
+        return writeKey("FS! ", bytes: bytes, size: 2)
+    }
+
+    private func writeKey(_ key: String, bytes: [UInt8], size: UInt32) -> Bool {
+        guard conn != 0 else { return false }
+        
+        var inputStruct = SMCParamStruct()
+        inputStruct.key = fourCharCode(key)
+        inputStruct.keyInfo.dataSize = size
+        inputStruct.data8 = UInt8(SMC_CMD_WRITE_BYTES)
+        
+        for (i, byte) in bytes.enumerated() {
+            if i >= 32 { break }
+            switch i {
+            case 0: inputStruct.bytes.0 = byte
+            case 1: inputStruct.bytes.1 = byte
+            case 2: inputStruct.bytes.2 = byte
+            case 3: inputStruct.bytes.3 = byte
+            case 4: inputStruct.bytes.4 = byte
+            case 5: inputStruct.bytes.5 = byte
+            case 6: inputStruct.bytes.6 = byte
+            case 7: inputStruct.bytes.7 = byte
+            case 8: inputStruct.bytes.8 = byte
+            case 9: inputStruct.bytes.9 = byte
+            case 10: inputStruct.bytes.10 = byte
+            case 11: inputStruct.bytes.11 = byte
+            case 12: inputStruct.bytes.12 = byte
+            case 13: inputStruct.bytes.13 = byte
+            case 14: inputStruct.bytes.14 = byte
+            case 15: inputStruct.bytes.15 = byte
+            case 16: inputStruct.bytes.16 = byte
+            case 17: inputStruct.bytes.17 = byte
+            case 18: inputStruct.bytes.18 = byte
+            case 19: inputStruct.bytes.19 = byte
+            case 20: inputStruct.bytes.20 = byte
+            case 21: inputStruct.bytes.21 = byte
+            case 22: inputStruct.bytes.22 = byte
+            case 23: inputStruct.bytes.23 = byte
+            case 24: inputStruct.bytes.24 = byte
+            case 25: inputStruct.bytes.25 = byte
+            case 26: inputStruct.bytes.26 = byte
+            case 27: inputStruct.bytes.27 = byte
+            case 28: inputStruct.bytes.28 = byte
+            case 29: inputStruct.bytes.29 = byte
+            case 30: inputStruct.bytes.30 = byte
+            case 31: inputStruct.bytes.31 = byte
+            default: break
+            }
+        }
+
+        var outputStruct = SMCParamStruct()
+        var outputSize = MemoryLayout<SMCParamStruct>.size
+
+        let result = IOConnectCallMethod(conn, UInt32(KERNEL_INDEX_SMC), nil, 0, &inputStruct, MemoryLayout<SMCParamStruct>.size, nil, nil, &outputStruct, &outputSize)
+
+        return result == kIOReturnSuccess && outputStruct.result == 0
+    }
+
     private func readKey(_ key: String) -> Double? {
         let info = getInfo(key)
         guard info.size > 0 else { return nil }
@@ -205,4 +315,5 @@ private typealias SMCBytes = (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, U
 
 private let KERNEL_INDEX_SMC = 2
 private let SMC_CMD_READ_BYTES = 5
+private let SMC_CMD_WRITE_BYTES = 6
 private let SMC_CMD_READ_KEYINFO = 9

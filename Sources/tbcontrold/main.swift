@@ -33,7 +33,7 @@ let autoEngine = AutoModeEngine()
 
 struct Settings: Codable {
     var tbEnabled: Bool = true
-    var mode: AutoMode = .manual
+    var mode: AutoMode = .autoTemp
     var config: AutoConfig = AutoConfig()
 }
 
@@ -169,6 +169,18 @@ func handleRequest(_ json: String) -> String? {
         }
         saveSettings()
         return jsonResponse(["success": true, "mode": mode.rawValue])
+
+    case "set_fan_speed":
+        guard let fanId = req["id"] as? Int,
+              let rpm = req["rpm"] as? Int else {
+            return errorResponse("missing 'id' or 'rpm' field")
+        }
+        let success = sensorMonitor.setFanSpeed(id: fanId, rpm: rpm)
+        return jsonResponse(["success": success])
+
+    case "reset_fans":
+        let success = sensorMonitor.resetFanControl()
+        return jsonResponse(["success": success])
 
     case "quit":
         DispatchQueue.main.async {
