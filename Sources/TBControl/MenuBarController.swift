@@ -31,9 +31,9 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
             self.touchBarController = controller
             let touchBar = controller.makeTouchBar()
             
-            // Present system-wide modal Touch Bar immediately
+            // Present system-wide modal Touch Bar immediately with placement 1 (System)
             if #available(macOS 10.12.2, *) {
-                NSTouchBar.presentSystemModalFunctionBar(touchBar, systemTrayItemIdentifier: .statsItem)
+                NSTouchBar.presentSystemModalFunctionBar(touchBar, placement: 1, systemTrayItemIdentifier: .statsItem)
             }
             
             // Trigger refresh immediately to populate data
@@ -584,10 +584,16 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
 
 extension NSTouchBar {
     @available(macOS 10.12.2, *)
-    static func presentSystemModalFunctionBar(_ touchBar: NSTouchBar, systemTrayItemIdentifier: NSTouchBarItem.Identifier) {
-        let selector = NSSelectorFromString("presentSystemModalFunctionBar:systemTrayItemIdentifier:")
+    static func presentSystemModalFunctionBar(_ touchBar: NSTouchBar, placement: Int, systemTrayItemIdentifier: NSTouchBarItem.Identifier) {
+        let selector = NSSelectorFromString("presentSystemModalFunctionBar:placement:systemTrayItemIdentifier:")
         if self.responds(to: selector) {
-            self.perform(selector, with: touchBar, with: systemTrayItemIdentifier.rawValue as NSString)
+            // NSObject.perform() only supports up to 2 arguments. 
+            // We use unsafeBitCast to call the implementation directly for 3 arguments.
+            typealias MethodType = @convention(c) (AnyObject, Selector, NSTouchBar, Int, NSString) -> Void
+            if let impl = self.method(for: selector) {
+                let method = unsafeBitCast(impl, to: MethodType.self)
+                method(self, selector, touchBar, placement, systemTrayItemIdentifier.rawValue as NSString)
+            }
         }
     }
     

@@ -49,7 +49,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     func makeTouchBar() -> NSTouchBar {
         let touchBar = NSTouchBar()
         touchBar.delegate = self
+        // Include statsItem in the bar's items so the system can resolve it
         touchBar.defaultItemIdentifiers = [
+            .statsItem, .fixedSpaceSmall,
             .tbStateItem, .fixedSpaceSmall,
             .tempItem, .fixedSpaceSmall,
             .fanItem, .fixedSpaceSmall,
@@ -60,7 +62,6 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         self.touchBar = touchBar
         
         // Ensure the item is present in the Control Strip
-        // We must pass the identifier as an NSString to avoid SIGSEGV
         let identifier = NSTouchBarItem.Identifier.statsItem.rawValue as NSString
         DFRElementSetControlStripPresenceForIdentifier(identifier, true)
         
@@ -71,7 +72,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         // This is called when the Control Strip icon is tapped
         if let touchBar = self.touchBar {
             if #available(macOS 10.12.2, *) {
-                NSTouchBar.presentSystemModalFunctionBar(touchBar, systemTrayItemIdentifier: .statsItem)
+                // Use the enhanced presentation method with placement
+                NSTouchBar.presentSystemModalFunctionBar(touchBar, placement: 1, systemTrayItemIdentifier: .statsItem)
             }
         }
     }
@@ -93,8 +95,17 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             self.batteryLabel.stringValue = "🔋 \(battStr)"
             self.freqLabel.stringValue = "🚀 \(freqStr)"
             
+            // Force labels to recalculate their size
+            self.tbStateLabel.sizeToFit()
+            self.tempLabel.sizeToFit()
+            self.fanLabel.sizeToFit()
+            self.loadLabel.sizeToFit()
+            self.batteryLabel.sizeToFit()
+            self.freqLabel.sizeToFit()
+            
             // Update Control Strip button title to show temperature residentially
             self.statsButton?.title = "\(tbIcon) \(tempStr)"
+            self.statsButton?.sizeToFit()
         }
     }
     
