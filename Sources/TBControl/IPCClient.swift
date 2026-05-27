@@ -13,8 +13,8 @@ class IPCClient {
               let success = resp["success"] as? Bool, success else { return nil }
         return StatusInfo(
             tbEnabled: resp["tb_enabled"] as? Bool ?? true,
-            cpuTemp: resp["cpu_temp"] as? Double ?? 0,
-            fanSpeed: resp["fan_speed"] as? Int ?? 0,
+            cpuTemp: resp["cpu_temp"] as? Double,
+            fanSpeed: resp["fan_speed"] as? Int,
             cpuLoad: resp["cpu_load"] as? Double ?? 0,
             mode: resp["mode"] as? String ?? "manual",
             batteryLevel: resp["battery_level"] as? Int ?? -1
@@ -86,8 +86,8 @@ class IPCClient {
 
 struct StatusInfo {
     let tbEnabled: Bool
-    let cpuTemp: Double
-    let fanSpeed: Int
+    let cpuTemp: Double?
+    let fanSpeed: Int?
     let cpuLoad: Double
     let mode: String
     let batteryLevel: Int

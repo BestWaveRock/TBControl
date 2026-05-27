@@ -24,9 +24,15 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 
 cp "$RELEASE_DIR/TBControl" "$APP_BUNDLE/Contents/MacOS/TBControl"
 cp "$RELEASE_DIR/tbcontrold" "$APP_BUNDLE/Contents/Resources/tbcontrold"
+cp "$PROJECT_DIR/Resources/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 cp -R "$KEXT_BUNDLE" "$APP_BUNDLE/Contents/Resources/DisableTurboBoost.kext"
 
 cp "$PROJECT_DIR/Scripts/TBControl-Info.plist" "$APP_BUNDLE/Contents/Info.plist"
+
+echo "==> 优化二进制文件 (Strip & Sign)..."
+strip "$APP_BUNDLE/Contents/MacOS/TBControl"
+strip "$APP_BUNDLE/Contents/Resources/tbcontrold"
+codesign --force --deep --sign - "$APP_BUNDLE"
 
 echo "==> 创建 DMG..."
 DMG_PATH="$BUILD_DIR/TBControl.dmg"

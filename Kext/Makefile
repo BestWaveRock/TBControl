@@ -10,7 +10,7 @@ CFLAGS := -arch x86_64 -mkernel -nostdlib -fno-builtin -fno-stack-protector \
           -static -Xlinker -kext -Xlinker -sectcreate -Xlinker __KEXT -Xlinker __info_plist \
           -Xlinker Info.plist -isysroot $(SDKROOT)
 CPPFLAGS := -I$(KERNELDIR) -I$(KERNELDIR)/.. -DKERNEL -D__KERNEL__
-LDFLAGS := -lkmod -r
+LDFLAGS := -lkmod
 
 all: $(BIN)
 
@@ -18,6 +18,7 @@ $(BIN): $(NAME).c Info.plist
 	@mkdir -p $(KEXT)/Contents/MacOS
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(NAME).c -o $@ $(LDFLAGS)
 	cp Info.plist $(INFO)
+	codesign -s - $@
 
 load: $(BIN)
 	sudo chown -R root:wheel $(KEXT)
