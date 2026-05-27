@@ -587,7 +587,7 @@ extension NSTouchBar {
     static func presentSystemModalFunctionBar(_ touchBar: NSTouchBar, systemTrayItemIdentifier: NSTouchBarItem.Identifier) {
         let selector = NSSelectorFromString("presentSystemModalFunctionBar:systemTrayItemIdentifier:")
         if self.responds(to: selector) {
-            self.perform(selector, with: touchBar, with: systemTrayItemIdentifier)
+            self.perform(selector, with: touchBar, with: systemTrayItemIdentifier.rawValue as NSString)
         }
     }
     

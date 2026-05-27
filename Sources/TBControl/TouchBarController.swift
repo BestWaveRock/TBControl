@@ -1,8 +1,9 @@
 import AppKit
 
 // Private function to ensure the icon stays in the Control Strip
+// Correct signature: void DFRElementSetControlStripPresenceForIdentifier(NSString *identifier, BOOL present);
 @_silgen_name("DFRElementSetControlStripPresenceForIdentifier")
-func DFRElementSetControlStripPresenceForIdentifier(_ identifier: String, _ enabled: Bool)
+func DFRElementSetControlStripPresenceForIdentifier(_ identifier: AnyObject, _ enabled: Bool)
 
 class TouchBarController: NSObject, NSTouchBarDelegate {
     var touchBar: NSTouchBar?
@@ -59,7 +60,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         self.touchBar = touchBar
         
         // Ensure the item is present in the Control Strip
-        DFRElementSetControlStripPresenceForIdentifier(NSTouchBarItem.Identifier.statsItem.rawValue, true)
+        // We must pass the identifier as an NSString to avoid SIGSEGV
+        let identifier = NSTouchBarItem.Identifier.statsItem.rawValue as NSString
+        DFRElementSetControlStripPresenceForIdentifier(identifier, true)
         
         return touchBar
     }
