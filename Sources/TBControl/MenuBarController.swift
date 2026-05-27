@@ -175,23 +175,43 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
     }
 
     private func checkVersion() {
-        lastVersionCheck = Date()
         guard let url = URL(string: githubRepo) else { return }
+        
+        os_log("Checking for updates at %@", log: logger, type: .debug, githubRepo)
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         
         URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            // Set last check time only after request completes to avoid blocking on instant network failures
+            self.lastVersionCheck = Date()
+            
+            if let error = error {
+                os_log("Version check network error: %@", log: self.logger, type: .error, error.localizedDescription)
+                return
+            }
+            
             guard let data = data,
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tagName = json["tag_name"] as? String,
-                  let self = self else { return }
+                  let tagName = json["tag_name"] as? String else {
+                os_log("Failed to parse version JSON from GitHub", log: self.logger, type: .error)
+                return
+            }
             
-            let latest = tagName.replacingOccurrences(of: "v", with: "")
+            let latest = tagName.replacingOccurrences(of: "v", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let current = self.currentVersion.trimmingCharacters(in: .whitespacesAndNewlines)
             self.latestVersion = latest
             
+            os_log("Latest version: %@, Current version: %@", log: self.logger, type: .info, latest, current)
+            
             DispatchQueue.main.async {
-                if latest.compare(self.currentVersion, options: .numeric) == .orderedDescending {
+                if latest.compare(current, options: .numeric) == .orderedDescending {
+                    os_log("New version available: %@", log: self.logger, type: .info, latest)
                     self.statusItem.menu?.item(withTag: 300)?.title = "⭕ 有新版本: v\(latest)"
+                } else {
+                    os_log("App is up to date", log: self.logger, type: .info)
+                    self.statusItem.menu?.item(withTag: 300)?.title = "版本: \(current)"
                 }
             }
         }.resume()
