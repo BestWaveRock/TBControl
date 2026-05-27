@@ -44,27 +44,32 @@ class SensorMonitor {
 
         // Fan Speed - Try multiple fans and keys
         var maxFanSpeed: Int? = nil
-        if let fanCount = readKey("FNum"), fanCount > 0 && fanCount < 10 {
-            for i in 0..<Int(fanCount) {
+        let fanCountVal = readKey("FNum") ?? 0
+        let fanCount = Int(fanCountVal)
+        
+        if fanCount > 0 && fanCount < 10 {
+            for i in 0..<fanCount {
                 // Try multiple keys for current fan
                 let keys = ["F\(i)Ac", "F\(i)Rn", "F\(i)Sp"]
                 for key in keys {
                     if let speed = readKey(key) {
                         // Sanity check: MacBook fans rarely exceed 15000 RPM
-                        // Allow 0 RPM as valid (stopped)
-                        if speed >= 0 && speed < 15000 {
+                        // Ignore 0 as it might be a transient reading error or stopped state we want to fallback from
+                        if speed > 0 && speed < 15000 {
                             maxFanSpeed = max(maxFanSpeed ?? 0, Int(speed))
                             break
                         }
                     }
                 }
             }
-        } else {
-            // Fallback if FNum fails or returns 0
-            let fanKeys = ["F0Ac", "F1Ac", "F2Ac", "F0Rn", "F1Rn", "F2Rn"]
-            for key in fanKeys {
+        }
+        
+        // If we still have nil or 0, try a more aggressive fallback
+        if (maxFanSpeed ?? 0) == 0 {
+            let fallbackKeys = ["F0Ac", "F1Ac", "F2Ac", "F0Rn", "F1Rn", "F2Rn", "F0Sp", "F1Sp"]
+            for key in fallbackKeys {
                 if let speed = readKey(key) {
-                    if speed >= 0 && speed < 15000 {
+                    if speed > 0 && speed < 15000 {
                         maxFanSpeed = max(maxFanSpeed ?? 0, Int(speed))
                     }
                 }
