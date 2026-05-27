@@ -7,7 +7,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
     private let ipcClient = IPCClient()
     private var status: StatusInfo?
     private var refreshTimer: Timer?
-    private let githubRepo = "https://api.github.com/repos/loop/TBControl/releases/latest" // 请修改为实际仓库地址
+    private let githubRepo = "https://api.github.com/repos/BestWaveRock/TBControl/releases/latest"
     private var latestVersion: String?
     private let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
     private let logger = OSLog(subsystem: "com.tbcontrol.app", category: "UI")
@@ -177,7 +177,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
     }
 
     @objc private func openGitHub() {
-        if let url = URL(string: "https://github.com/loop/TBControl") { // 请修改为实际地址
+        if let url = URL(string: "https://github.com/BestWaveRock/TBControl") {
             NSWorkspace.shared.open(url)
         }
     }
