@@ -50,8 +50,9 @@ class SensorMonitor {
                 let keys = ["F\(i)Ac", "F\(i)Rn", "F\(i)Sp"]
                 for key in keys {
                     if let speed = readKey(key) {
-                        // Sanity check: MacBook fans rarely exceed 8000 RPM
-                        if speed > 0 && speed < 15000 {
+                        // Sanity check: MacBook fans rarely exceed 15000 RPM
+                        // Allow 0 RPM as valid (stopped)
+                        if speed >= 0 && speed < 15000 {
                             maxFanSpeed = max(maxFanSpeed ?? 0, Int(speed))
                             break
                         }
@@ -63,7 +64,7 @@ class SensorMonitor {
             let fanKeys = ["F0Ac", "F1Ac", "F2Ac", "F0Rn", "F1Rn", "F2Rn"]
             for key in fanKeys {
                 if let speed = readKey(key) {
-                    if speed > 0 && speed < 15000 {
+                    if speed >= 0 && speed < 15000 {
                         maxFanSpeed = max(maxFanSpeed ?? 0, Int(speed))
                     }
                 }
@@ -108,14 +109,15 @@ class SensorMonitor {
     }
 
     private func parseValue(data: SMCBytes, type: String) -> Double? {
-        switch type {
+        let t = type.trimmingCharacters(in: .whitespaces)
+        switch t {
         case "sp78":
             let val = (UInt16(data.0) << 8) | UInt16(data.1)
             return Double(Int16(bitPattern: val)) / 256.0
         case "fpe2":
             let val = (UInt16(data.0) << 8) | UInt16(data.1)
             return Double(val) / 4.0
-        case "ui8 ", "hex8":
+        case "ui8", "hex8":
             return Double(data.0)
         case "ui16":
             let val = (UInt16(data.0) << 8) | UInt16(data.1)
