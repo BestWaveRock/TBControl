@@ -54,11 +54,25 @@ strip "$APP_BUNDLE/Contents/MacOS/TBControl"
 strip "$APP_BUNDLE/Contents/Resources/tbcontrold"
 codesign --force --deep --sign - "$APP_BUNDLE"
 
+echo "==> 准备 DMG 内容 (Staging)..."
+DMG_STAGING="$BUILD_DIR/dmg_staging"
+rm -rf "$DMG_STAGING"
+mkdir -p "$DMG_STAGING"
+
+# 将 App 移动到暂存区
+cp -R "$APP_BUNDLE" "$DMG_STAGING/TBControl.app"
+
+# 创建 /Applications 快捷方式
+ln -s /Applications "$DMG_STAGING/Applications"
+
 echo "==> 创建 DMG..."
 DMG_PATH="$BUILD_DIR/TBControl.dmg"
 rm -f "$DMG_PATH"
 
-hdiutil create -volname "TBControl" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_PATH"
+hdiutil create -volname "TBControl" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH"
+
+# 清理暂存区
+rm -rf "$DMG_STAGING"
 
 echo ""
 echo "✅ 构建完成!"
