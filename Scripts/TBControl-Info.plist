@@ -8,6 +8,8 @@
     <string>TBControl</string>
     <key>CFBundleExecutable</key>
     <string>TBControl</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon.icns</string>
     <key>CFBundleIdentifier</key>
     <string>com.tbcontrol.app</string>
     <key>CFBundleInfoDictionaryVersion</key>

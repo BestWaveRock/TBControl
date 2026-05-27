@@ -30,8 +30,10 @@ echo "2/4  安装 KEXT..."
 KEXT_SRC="/Applications/TBControl.app/Contents/Resources/DisableTurboBoost.kext"
 KEXT_DST="/Library/Application Support/TBControl/DisableTurboBoost.kext"
 mkdir -p "/Library/Application Support/TBControl"
+rm -rf "$KEXT_DST"
 cp -R "$KEXT_SRC" "$KEXT_DST"
 chown -R root:wheel "$KEXT_DST"
+chmod -R 755 "$KEXT_DST"
 
 echo "3/4  安装守护进程..."
 DAEMON_SRC="/Applications/TBControl.app/Contents/Resources/tbcontrold"
@@ -40,13 +42,18 @@ cp "$DAEMON_SRC" "$DAEMON_DST"
 chown root:wheel "$DAEMON_DST"
 chmod 755 "$DAEMON_DST"
 
-cat > /Library/LaunchDaemons/com.tbcontrol.daemon.plist <<PLIST
+# 创建日志文件并设置权限
+touch /var/log/tbcontrol.log
+chmod 644 /var/log/tbcontrol.log
+chown root:wheel /var/log/tbcontrol.log
+
+cat > /Library/LaunchDaemons/com.tbcontrol.tbcontrold.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.tbcontrol.daemon</string>
+    <string>com.tbcontrol.tbcontrold</string>
     <key>ProgramArguments</key>
     <array>
         <string>$DAEMON_DST</string>
@@ -70,17 +77,18 @@ cat > /Library/LaunchDaemons/com.tbcontrol.daemon.plist <<PLIST
 </plist>
 PLIST
 
-chown root:wheel /Library/LaunchDaemons/com.tbcontrol.daemon.plist
-chmod 644 /Library/LaunchDaemons/com.tbcontrol.daemon.plist
+chown root:wheel /Library/LaunchDaemons/com.tbcontrol.tbcontrold.plist
+chmod 644 /Library/LaunchDaemons/com.tbcontrol.tbcontrold.plist
 
 echo "4/4  启动守护进程..."
-launchctl load /Library/LaunchDaemons/com.tbcontrol.daemon.plist
-launchctl start com.tbcontrol.daemon
+launchctl unload /Library/LaunchDaemons/com.tbcontrol.tbcontrold.plist 2>/dev/null || true
+launchctl load /Library/LaunchDaemons/com.tbcontrol.tbcontrold.plist
+launchctl start com.tbcontrol.tbcontrold
 
 echo ""
 echo "✅ 安装完成!"
 echo "   已安装到: /Applications/TBControl.app"
-echo "   守护进程: com.tbcontrol.daemon"
+echo "   守护进程: com.tbcontrol.tbcontrold"
 echo ""
 echo "打开 App 即可使用。首次禁用 Turbo Boost 需在"
 echo "系统设置 > 隐私与安全性 中允许加载内核扩展。"

@@ -3,7 +3,6 @@ import Foundation
 class DaemonIPC {
     private let socketPath = "/tmp/tbcontrol.sock"
     private var serverHandle: Int32?
-    private var clients: [Int32: FileHandle] = [:]
     private var onRequest: ((String, Int32) -> String?)?
 
     init(onRequest: ((String, Int32) -> String?)?) {
@@ -64,8 +63,6 @@ class DaemonIPC {
                 break
             }
 
-            clients[client] = FileHandle(fileDescriptor: client, closeOnDealloc: false)
-
             DispatchQueue.global(qos: .default).async { [weak self] in
                 self?.handleClient(client)
             }
@@ -74,22 +71,29 @@ class DaemonIPC {
 
     private func handleClient(_ fd: Int32) {
         defer {
-            clients.removeValue(forKey: fd)
             close(fd)
         }
 
-        var buf = [UInt8](repeating: 0, count: 65536)
         var data = Data()
+        var buf = [UInt8](repeating: 0, count: 1024)
 
         while true {
             let n = read(fd, &buf, buf.count)
-            if n > 0 { data.append(buf, count: n) }
-            else if n == 0 { break }
-            else { return }
+            if n > 0 {
+                data.append(buf, count: n)
+                if data.contains(0x0a) { break }
+            } else if n == 0 {
+                break
+            } else {
+                if errno == EAGAIN || errno == EINTR { continue }
+                return
+            }
         }
 
         let reqStr = String(data: data, encoding: .utf8) ?? ""
         let trimmed = reqStr.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        
         let respStr = onRequest?(trimmed, fd) ?? "{\"err\":\"no handler\"}"
 
         // 直接写入，不用withUnsafeBytes多次调用
