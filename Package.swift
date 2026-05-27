@@ -14,7 +14,10 @@ let package = Package(
             name: "TBControl",
             dependencies: [],
             path: "Sources/TBControl",
-            linkerSettings: [.linkedFramework("AppKit")]
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+                .unsafeFlags(["-F/System/Library/PrivateFrameworks", "-framework", "DFRFoundation"])
+            ]
         ),
     ]
 )
