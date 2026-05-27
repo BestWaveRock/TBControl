@@ -28,9 +28,18 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
         if isTouchBarEnabled {
             let controller = TouchBarController()
             self.touchBarController = controller
-            NSApp.touchBar = controller.makeTouchBar()
+            let touchBar = controller.makeTouchBar()
+            
+            // Present system-wide modal Touch Bar
+            if #available(macOS 10.12.2, *) {
+                NSTouchBar.presentSystemModalFunctionBar(touchBar, systemTrayItemIdentifier: .statsItem)
+            }
         } else {
-            NSApp.touchBar = nil
+            if let controller = touchBarController, let touchBar = controller.touchBar {
+                if #available(macOS 10.12.2, *) {
+                    NSTouchBar.dismissSystemModalFunctionBar(touchBar)
+                }
+            }
             self.touchBarController = nil
         }
         statusItem.menu?.item(withTag: 201)?.state = isTouchBarEnabled ? .on : .off
@@ -177,7 +186,8 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
     }
 
     @objc private func openGitHub() {
-        if let url = URL(string: "https://github.com/BestWaveRock/TBControl") {
+        let urlStr = latestVersion != nil ? "https://github.com/BestWaveRock/TBControl/releases" : "https://github.com/BestWaveRock/TBControl"
+        if let url = URL(string: urlStr) {
             NSWorkspace.shared.open(url)
         }
     }
@@ -532,5 +542,23 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
         // Re-enable Turbo Boost on exit for safety
         _ = ipcClient.sendCommand(["cmd": "set_tb", "enabled": true])
         NSApplication.shared.terminate(nil)
+    }
+}
+
+extension NSTouchBar {
+    @available(macOS 10.12.2, *)
+    static func presentSystemModalFunctionBar(_ touchBar: NSTouchBar, systemTrayItemIdentifier: NSTouchBarItem.Identifier) {
+        let selector = NSSelectorFromString("presentSystemModalFunctionBar:systemTrayItemIdentifier:")
+        if self.responds(to: selector) {
+            self.perform(selector, with: touchBar, with: systemTrayItemIdentifier)
+        }
+    }
+    
+    @available(macOS 10.12.2, *)
+    static func dismissSystemModalFunctionBar(_ touchBar: NSTouchBar) {
+        let selector = NSSelectorFromString("dismissSystemModalFunctionBar:")
+        if self.responds(to: selector) {
+            self.perform(selector, with: touchBar)
+        }
     }
 }
