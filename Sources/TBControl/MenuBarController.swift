@@ -31,10 +31,13 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
             self.touchBarController = controller
             let touchBar = controller.makeTouchBar()
             
-            // Present system-wide modal Touch Bar
+            // Present system-wide modal Touch Bar immediately
             if #available(macOS 10.12.2, *) {
                 NSTouchBar.presentSystemModalFunctionBar(touchBar, systemTrayItemIdentifier: .statsItem)
             }
+            
+            // Trigger refresh immediately to populate data
+            refresh()
         } else {
             if let controller = touchBarController, let touchBar = controller.touchBar {
                 if #available(macOS 10.12.2, *) {

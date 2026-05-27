@@ -1,5 +1,9 @@
 import AppKit
 
+// Private function to ensure the icon stays in the Control Strip
+@_silgen_name("DFRElementSetControlStripPresenceForIdentifier")
+func DFRElementSetControlStripPresenceForIdentifier(_ identifier: String, _ enabled: Bool)
+
 class TouchBarController: NSObject, NSTouchBarDelegate {
     var touchBar: NSTouchBar?
     
@@ -9,11 +13,17 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     private let loadLabel = createLabel()
     private let batteryLabel = createLabel()
     private let freqLabel = createLabel()
+    private var statsButton: NSButton?
     
     private static func createLabel() -> NSTextField {
         let label = NSTextField(labelWithString: "")
-        label.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        label.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
         label.textColor = .white
+        label.backgroundColor = .clear
+        label.isBezeled = false
+        label.isEditable = false
+        label.alignment = .center
+        label.sizeToFit()
         return label
     }
     
@@ -47,23 +57,25 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             .freqItem
         ]
         self.touchBar = touchBar
+        
+        // Ensure the item is present in the Control Strip
+        DFRElementSetControlStripPresenceForIdentifier(NSTouchBarItem.Identifier.statsItem.rawValue, true)
+        
         return touchBar
     }
     
     @objc private func toggleFullBar() {
-        // This is a placeholder for tapping the Control Strip icon
-        // Usually, tapping the icon in presentSystemModalFunctionBar toggles the modal bar
+        // This is called when the Control Strip icon is tapped
+        if let touchBar = self.touchBar {
+            if #available(macOS 10.12.2, *) {
+                NSTouchBar.presentSystemModalFunctionBar(touchBar, systemTrayItemIdentifier: .statsItem)
+            }
+        }
     }
 
     func updateStats(temp: Double?, fan: Int?, load: Double, tbEnabled: Bool, battery: Int) {
         let tbIcon = tbEnabled ? "🔥" : "🧊"
-        
-        // Update Control Strip button title if possible
-        if let item = touchBar?.item(forIdentifier: .statsItem), let button = item.view as? NSButton {
-            button.title = "\(tbIcon) TB"
-        }
-
-        let tbText = tbEnabled ? "TB On" : "TB Off"
+        let tbText = tbEnabled ? "On" : "Off"
         let tempStr = temp != nil ? String(format: "%.0f°C", temp!) : "—"
         let fanStr = fan != nil ? "\(fan!) rpm" : "—"
         let loadStr = String(format: "%.1f%%", load)
@@ -77,6 +89,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             self.loadLabel.stringValue = "⚡️ \(loadStr)"
             self.batteryLabel.stringValue = "🔋 \(battStr)"
             self.freqLabel.stringValue = "🚀 \(freqStr)"
+            
+            // Update Control Strip button title to show temperature residentially
+            self.statsButton?.title = "\(tbIcon) \(tempStr)"
         }
     }
     
@@ -84,9 +99,10 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         switch identifier {
         case .statsItem:
             let item = NSCustomTouchBarItem(identifier: identifier)
-            let button = NSButton(title: "🧊 TB", target: self, action: #selector(toggleFullBar))
+            let button = NSButton(title: "🧊", target: self, action: #selector(toggleFullBar))
             button.bezelStyle = .rounded
             item.view = button
+            self.statsButton = button
             return item
         case .tbStateItem:
             let item = NSCustomTouchBarItem(identifier: identifier)
