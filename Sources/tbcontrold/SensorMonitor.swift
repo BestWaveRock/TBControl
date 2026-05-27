@@ -109,12 +109,20 @@ class SensorMonitor {
     }
 
     private func parseValue(data: SMCBytes, type: String) -> Double? {
-        let t = type.trimmingCharacters(in: .whitespaces)
+        let t = type.trimmingCharacters(in: .whitespaces).lowercased()
+        
+        // Generic SPxx type parsing (e.g., sp78, spb4)
+        if t.hasPrefix("sp") && t.count == 4 {
+            let chars = Array(t)
+            if let fractionBits = Int(String(chars[3]), radix: 16) {
+                let val = (UInt16(data.0) << 8) | UInt16(data.1)
+                // Use signed Int16 for SP types as they are typically fixed-point signed
+                return Double(Int16(bitPattern: val)) / pow(2.0, Double(fractionBits))
+            }
+        }
+
         switch t {
-        case "sp78":
-            let val = (UInt16(data.0) << 8) | UInt16(data.1)
-            return Double(Int16(bitPattern: val)) / 256.0
-        case "fpe2":
+        case "fpe2", "fp2e":
             let val = (UInt16(data.0) << 8) | UInt16(data.1)
             return Double(val) / 4.0
         case "ui8", "hex8":
@@ -125,7 +133,7 @@ class SensorMonitor {
         case "ui32":
             let val = (UInt32(data.0) << 24) | (UInt32(data.1) << 16) | (UInt32(data.2) << 8) | UInt32(data.3)
             return Double(val)
-        case "flt ":
+        case "flt":
             let val = (UInt32(data.0) << 24) | (UInt32(data.1) << 16) | (UInt32(data.2) << 8) | UInt32(data.3)
             return Double(Float32(bitPattern: val))
         default:
@@ -184,7 +192,6 @@ private struct SMCParamStruct {
     var result: UInt8 = 0
     var status: UInt8 = 0
     var data8: UInt8 = 0
-    var padding2: UInt8 = 0
     var data32: UInt32 = 0
     var bytes: SMCBytes = (0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)
 }

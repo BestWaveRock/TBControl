@@ -2,7 +2,7 @@ import AppKit
 import UserNotifications
 import OSLog
 
-class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
+class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDelegate {
     private let statusItem: NSStatusItem
     private let ipcClient = IPCClient()
     private var status: StatusInfo?
@@ -13,6 +13,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
     private let logger = OSLog(subsystem: "com.tbcontrol.app", category: "UI")
     private var touchBarController: TouchBarController?
     private var isTouchBarEnabled = false
+    private var lastVersionCheck: Date?
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -160,10 +161,21 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+        menu.delegate = self
         updateAutoLaunchMenuItem()
     }
 
+    // MARK: - NSMenuDelegate
+    func menuWillOpen(_ menu: NSMenu) {
+        // Check version when menu opens, but only if it's been more than 1 hour since last check
+        if let last = lastVersionCheck, Date().timeIntervalSince(last) < 3600 {
+            return
+        }
+        checkVersion()
+    }
+
     private func checkVersion() {
+        lastVersionCheck = Date()
         guard let url = URL(string: githubRepo) else { return }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
@@ -179,7 +191,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate {
             
             DispatchQueue.main.async {
                 if latest.compare(self.currentVersion, options: .numeric) == .orderedDescending {
-                    self.statusItem.menu?.item(withTag: 300)?.title = "✨ 有新版本: v\(latest)"
+                    self.statusItem.menu?.item(withTag: 300)?.title = "⭕ 有新版本: v\(latest)"
                 }
             }
         }.resume()

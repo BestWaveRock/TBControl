@@ -2,7 +2,34 @@ import AppKit
 
 class TouchBarController: NSObject, NSTouchBarDelegate {
     var touchBar: NSTouchBar?
-    private let statsLabel = NSTextField(labelWithString: "加载中...")
+    
+    private let tbStateLabel = createLabel()
+    private let tempLabel = createLabel()
+    private let fanLabel = createLabel()
+    private let loadLabel = createLabel()
+    private let batteryLabel = createLabel()
+    private let freqLabel = createLabel()
+    
+    private static func createLabel() -> NSTextField {
+        let label = NSTextField(labelWithString: "")
+        label.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        label.textColor = .white
+        return label
+    }
+    
+    private lazy var baseFrequency: String = {
+        var size = size_t()
+        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
+        var brand = [CChar](repeating: 0, count: size)
+        sysctlbyname("machdep.cpu.brand_string", &brand, &size, nil, 0)
+        let brandString = String(cString: brand)
+        
+        // Match something like "2.30GHz" or "2.3GHz"
+        if let range = brandString.range(of: #"\d+\.\d+GHz"#, options: .regularExpression) {
+            return String(brandString[range])
+        }
+        return "2.3GHz" // Fallback
+    }()
     
     override init() {
         super.init()
@@ -11,41 +38,75 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     func makeTouchBar() -> NSTouchBar {
         let touchBar = NSTouchBar()
         touchBar.delegate = self
-        touchBar.defaultItemIdentifiers = [.statsItem]
+        touchBar.defaultItemIdentifiers = [
+            .tbStateItem, .fixedSpaceSmall,
+            .tempItem, .fixedSpaceSmall,
+            .fanItem, .fixedSpaceSmall,
+            .loadItem, .fixedSpaceSmall,
+            .batteryItem, .fixedSpaceSmall,
+            .freqItem
+        ]
         self.touchBar = touchBar
         return touchBar
     }
     
     func updateStats(temp: Double?, fan: Int?, load: Double, tbEnabled: Bool, battery: Int) {
         let tbIcon = tbEnabled ? "🔥" : "🧊"
+        let tbText = tbEnabled ? "TB On" : "TB Off"
         let tempStr = temp != nil ? String(format: "%.0f°C", temp!) : "—"
-        let fanStr = fan != nil ? "\(fan!)" : "—"
-        let loadStr = String(format: "%.0f%%", load)
+        let fanStr = fan != nil ? "\(fan!) rpm" : "—"
+        let loadStr = String(format: "%.1f%%", load)
         let battStr = battery >= 0 ? "\(battery)%" : "—"
-        
-        // Simplified frequency estimation for display
-        let baseFreq = 2.3 // Hardcoded base for UI display
-        let freqStr = tbEnabled ? "> 2.3GHz" : "2.3GHz"
-        
-        let stats = "\(tbIcon) TB | 🌡 \(tempStr) | 🌀 \(fanStr) rpm | ⚡️ \(loadStr) | 🔋 \(battStr) | 🚀 \(freqStr)"
+        let freqStr = tbEnabled ? "> \(baseFrequency)" : baseFrequency
         
         DispatchQueue.main.async {
-            self.statsLabel.stringValue = stats
-            self.statsLabel.font = .systemFont(ofSize: 14, weight: .medium)
-            self.statsLabel.textColor = .white
+            self.tbStateLabel.stringValue = "\(tbIcon) \(tbText)"
+            self.tempLabel.stringValue = "🌡 \(tempStr)"
+            self.fanLabel.stringValue = "🌀 \(fanStr)"
+            self.loadLabel.stringValue = "⚡️ \(loadStr)"
+            self.batteryLabel.stringValue = "🔋 \(battStr)"
+            self.freqLabel.stringValue = "🚀 \(freqStr)"
         }
     }
     
     func touchBar(_ touchBar: NSTouchBar, makeItemForIdentifier identifier: NSTouchBarItem.Identifier) -> NSTouchBarItem? {
-        if identifier == .statsItem {
+        switch identifier {
+        case .tbStateItem:
             let item = NSCustomTouchBarItem(identifier: identifier)
-            item.view = statsLabel
+            item.view = tbStateLabel
             return item
+        case .tempItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            item.view = tempLabel
+            return item
+        case .fanItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            item.view = fanLabel
+            return item
+        case .loadItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            item.view = loadLabel
+            return item
+        case .batteryItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            item.view = batteryLabel
+            return item
+        case .freqItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            item.view = freqLabel
+            return item
+        default:
+            return nil
         }
-        return nil
     }
 }
 
 extension NSTouchBarItem.Identifier {
     static let statsItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.stats")
+    static let tbStateItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.tbState")
+    static let tempItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.temp")
+    static let fanItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.fan")
+    static let loadItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.load")
+    static let batteryItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.battery")
+    static let freqItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.freq")
 }
