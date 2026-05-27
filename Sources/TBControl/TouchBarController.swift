@@ -1,7 +1,7 @@
 import AppKit
 
 class TouchBarController: NSObject, NSTouchBarDelegate {
-    private var touchBar: NSTouchBar?
+    var touchBar: NSTouchBar?
     private let statsLabel = NSTextField(labelWithString: "加载中...")
     
     override init() {

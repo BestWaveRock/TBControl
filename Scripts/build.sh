@@ -29,6 +29,17 @@ cp -R "$KEXT_BUNDLE" "$APP_BUNDLE/Contents/Resources/DisableTurboBoost.kext"
 
 cp "$PROJECT_DIR/Scripts/TBControl-Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 
+# 注入版本号 (如果环境变量 VERSION 存在)
+if [ ! -z "$VERSION" ]; then
+    echo "==> 注入版本号: $VERSION"
+    # 清理 v 前缀
+    CLEAN_VER=$(echo $VERSION | sed 's/^v//')
+    plutil -replace CFBundleShortVersionString -string "$CLEAN_VER" "$APP_BUNDLE/Contents/Info.plist"
+    plutil -replace CFBundleVersion -string "$CLEAN_VER" "$APP_BUNDLE/Contents/Info.plist"
+    # 同时同步到源码配置文件，确保本地构建也一致
+    plutil -replace CFBundleShortVersionString -string "$CLEAN_VER" "$PROJECT_DIR/Scripts/TBControl-Info.plist"
+fi
+
 echo "==> 优化二进制文件 (Strip & Sign)..."
 strip "$APP_BUNDLE/Contents/MacOS/TBControl"
 strip "$APP_BUNDLE/Contents/Resources/tbcontrold"
