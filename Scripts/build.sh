@@ -11,10 +11,19 @@ make clean 2>/dev/null || true
 make
 KEXT_BUNDLE="$PROJECT_DIR/Kext/build/DisableTurboBoost.kext"
 
-echo "==> 编译 Swift 组件..."
+echo "==> 编译 Swift 组件 (Universal Binaries)..."
 cd "$PROJECT_DIR"
-swift build -c release --product tbcontrold
-swift build -c release --product TBControl
+# 显式指定构建架构为 x86_64 和 arm64
+swift build -c release --product tbcontrold --arch x86_64 --arch arm64
+swift build -c release --product TBControl --arch x86_64 --arch arm64
+
+# 定义二进制文件路径 (Universal binary usually stays in .build/apple/Products/Release)
+# 或者在默认路径下，取决于 Swift 版本。我们将检查常规路径。
+RELEASE_DIR="$PROJECT_DIR/.build/apple/Products/Release"
+if [ ! -d "$RELEASE_DIR" ]; then
+    # 兼容旧版本或单架构路径
+    RELEASE_DIR="$PROJECT_DIR/.build/release"
+fi
 
 echo "==> 创建 TBControl.app 包..."
 APP_BUNDLE="$BUILD_DIR/TBControl.app"
