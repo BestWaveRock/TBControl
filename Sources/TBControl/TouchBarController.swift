@@ -49,16 +49,24 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     func makeTouchBar() -> NSTouchBar {
         let touchBar = NSTouchBar()
         touchBar.delegate = self
-        // Include statsItem in the bar's items so the system can resolve it
-        touchBar.defaultItemIdentifiers = [
-            .statsItem, .fixedSpaceSmall,
-            .tbStateItem, .fixedSpaceSmall,
-            .tempItem, .fixedSpaceSmall,
-            .fanItem, .fixedSpaceSmall,
-            .loadItem, .fixedSpaceSmall,
-            .batteryItem, .fixedSpaceSmall,
-            .freqItem
-        ]
+        
+        let configuredItems = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "temp", "fan", "load", "battery", "freq"]
+        var identifiers: [NSTouchBarItem.Identifier] = [.statsItem]
+        
+        for key in configuredItems {
+            identifiers.append(.fixedSpaceSmall)
+            switch key {
+            case "tbState": identifiers.append(.tbStateItem)
+            case "temp": identifiers.append(.tempItem)
+            case "fan": identifiers.append(.fanItem)
+            case "load": identifiers.append(.loadItem)
+            case "battery": identifiers.append(.batteryItem)
+            case "freq": identifiers.append(.freqItem)
+            default: break
+            }
+        }
+        
+        touchBar.defaultItemIdentifiers = identifiers
         self.touchBar = touchBar
         
         // Ensure the item is present in the Control Strip

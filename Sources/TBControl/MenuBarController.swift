@@ -23,31 +23,68 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         setupNotifications()
         startRefresh()
         checkVersion()
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(autoLaunchChanged), name: NSNotification.Name("AutoLaunchChanged"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(touchBarConfigChanged), name: NSNotification.Name("TouchBarConfigChanged"), object: nil)
+        
+        // Initial setup for Touch Bar
+        isTouchBarEnabled = UserDefaults.standard.bool(forKey: "isTouchBarEnabled")
+        if isTouchBarEnabled {
+            setupTouchBar()
+        }
+    }
+
+    @objc private func autoLaunchChanged() {
+        updateAutoLaunchMenuItem()
+    }
+    
+    @objc private func touchBarConfigChanged() {
+        let enabled = UserDefaults.standard.bool(forKey: "isTouchBarEnabled")
+        if enabled != isTouchBarEnabled {
+            toggleTouchBarAction()
+        } else if isTouchBarEnabled {
+            // Re-setup touch bar to apply new layout
+            setupTouchBar()
+        }
+    }
+
+    @objc private func toggleTouchBarAction() {
+        isTouchBarEnabled.toggle()
+        UserDefaults.standard.set(isTouchBarEnabled, forKey: "isTouchBarEnabled")
+        
+        if isTouchBarEnabled {
+            setupTouchBar()
+        } else {
+            removeTouchBar()
+        }
+        statusItem.menu?.item(withTag: 201)?.state = isTouchBarEnabled ? .on : .off
+    }
+    
+    private func setupTouchBar() {
+        // Remove existing first if any
+        removeTouchBar()
+        
+        let controller = TouchBarController()
+        self.touchBarController = controller
+        let touchBar = controller.makeTouchBar()
+        
+        if #available(macOS 10.12.2, *) {
+            NSTouchBar.presentSystemModalFunctionBar(touchBar, placement: 1, systemTrayItemIdentifier: .statsItem)
+        }
+        refresh()
+    }
+    
+    private func removeTouchBar() {
+        if let controller = touchBarController, let touchBar = controller.touchBar {
+            if #available(macOS 10.12.2, *) {
+                NSTouchBar.dismissSystemModalFunctionBar(touchBar)
+            }
+        }
+        self.touchBarController = nil
     }
 
     @objc private func toggleTouchBar() {
-        isTouchBarEnabled.toggle()
-        if isTouchBarEnabled {
-            let controller = TouchBarController()
-            self.touchBarController = controller
-            let touchBar = controller.makeTouchBar()
-            
-            // Present system-wide modal Touch Bar immediately with placement 1 (System)
-            if #available(macOS 10.12.2, *) {
-                NSTouchBar.presentSystemModalFunctionBar(touchBar, placement: 1, systemTrayItemIdentifier: .statsItem)
-            }
-            
-            // Trigger refresh immediately to populate data
-            refresh()
-        } else {
-            if let controller = touchBarController, let touchBar = controller.touchBar {
-                if #available(macOS 10.12.2, *) {
-                    NSTouchBar.dismissSystemModalFunctionBar(touchBar)
-                }
-            }
-            self.touchBarController = nil
-        }
-        statusItem.menu?.item(withTag: 201)?.state = isTouchBarEnabled ? .on : .off
+        toggleTouchBarAction()
     }
 
     private func setupNotifications() {
@@ -143,6 +180,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         let touchBarItem = NSMenuItem(title: "Touch Bar 监控", action: #selector(toggleTouchBar), keyEquivalent: "")
         touchBarItem.target = self
         touchBarItem.tag = 201
+        touchBarItem.state = isTouchBarEnabled ? .on : .off
         menu.addItem(touchBarItem)
 
         let daemonStatusItem = NSMenuItem(title: "守护进程: 检测中...", action: nil, keyEquivalent: "")
