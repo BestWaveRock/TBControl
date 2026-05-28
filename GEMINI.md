@@ -28,10 +28,15 @@
   - 支持通用 `spxx` 固定小数点类型解析。
   - 自动识别并显示 0 RPM（风扇停止状态）。
 - **Touch Bar**: 
-  - 采用 **System Modal** 机制 (`presentSystemModalFunctionBar`) 实现跨应用常驻显示。
+  - 采用 **System Modal** 机制实现跨应用常驻显示。使用私有 API `presentSystemModalFunctionBar:placement:systemTrayItemIdentifier:` 并设置 `placement: 1` (System 级别) 以获得最高显示优先级。
+  - 调用私有函数 `DFRElementSetControlStripPresenceForIdentifier` 确保图标在 Control Strip 中常驻，并实时显示核心状态（如温度）。
+  - **重要**: 调用私有 C/ObjC API 时，必须显式将 Swift 类型桥接为 Objective-C 对象（如 `NSString`），直接传递 Swift 结构体或 String 会导致 `SIGSEGV` 崩溃。
+  - **布局**: 组件化布局，采用等宽数字字体。更新文本后必须调用 `sizeToFit()` 以确保组件尺寸正确，防止界面空白。
   - 动态从 `sysctl machdep.cpu.brand_string` 提取 CPU 基础频率。
+
 - **架构兼容性**: 
-  - 必须构建 **Universal Binaries (x86_64 + arm64)**，以确保在 GitHub Actions (M1 运行环境) 编译的产物能在 Intel Mac 上运行。
+  - 必须构建 **Universal Binaries (x86_64 + arm64)**。
+  - 链接私有框架：在 `Package.swift` 中需通过 `unsafeFlags` 链接 `/System/Library/PrivateFrameworks/DFRFoundation.framework`。
   - Kext 加载需要禁用 SIP 或设置为 `--without kext`。
   - 守护进程必须以 root 权限运行。
 
@@ -58,5 +63,7 @@
 
 ## 4. 常见问题排查
 - **状态栏显示 ⚠️**: 通常是 Kext 未被系统允许加载。需前往“系统设置 > 隐私与安全性”允许。
-- **Touch Bar 空白**: 确保系统设置中的 Touch Bar 显示模式包含“App 控件”。
+- **Touch Bar 空白**: 
+  - 确保系统设置中的 Touch Bar 显示模式包含“App 控件”。
+  - 代码层面：更新文本后必须调用 `sizeToFit()` 以重新计算组件尺寸，否则会被系统识别为 0x0 而不显示。
 - **转速异常**: 硬件读取偶发脏数据，代码中已增加 15000 RPM 的阈值过滤。
