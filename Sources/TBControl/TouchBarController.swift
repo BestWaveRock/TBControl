@@ -178,7 +178,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             let boost = (max - base) * (load / 100.0)
             currentFreq = base + boost
         } else {
-            currentFreq = base * (0.8 + 0.2 * (load / 100.0))
+            // Capped at base, user requested stable base frequency when disabled
+            currentFreq = base
         }
         let freqStr = String(format: "%.2f GHz", currentFreq)
         
