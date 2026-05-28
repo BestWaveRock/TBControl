@@ -49,7 +49,7 @@ struct MainWindowView: View {
             }
             .padding()
         }
-        .frame(minWidth: 500, minHeight: 400)
+        .frame(minWidth: 550, minHeight: 450)
     }
 }
 
@@ -57,11 +57,14 @@ class MainWindowViewModel: ObservableObject {
     @Published var cpuTemp: String = "—"
     @Published var fanSpeed: String = "—"
     @Published var cpuLoad: String = "—"
+    @Published var wattage: String = "—"
+    @Published var netSpeed: String = "—"
+    @Published var memoryUsage: String = "—"
     @Published var isTurboBoostEnabled: Bool = true
     @Published var currentMode: String = "manual"
     @Published var isDaemonRunning: Bool = false
     @Published var isTouchBarEnabled: Bool = UserDefaults.standard.bool(forKey: "isTouchBarEnabled")
-    @Published var touchBarItems: [String] = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "temp", "fan", "load", "battery", "freq"]
+    @Published var touchBarItems: [String] = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "mode", "temp", "fan", "load", "battery", "freq", "memory", "wattage", "network", "refresh"]
     @Published var batteryThreshold: Int = 30
 
     private let ipcClient = IPCClient()
@@ -98,9 +101,23 @@ class MainWindowViewModel: ObservableObject {
             }
             
             self.cpuLoad = String(format: "%.1f%%", status.cpuLoad)
+            self.wattage = String(format: "%.1fW", status.wattage)
+            self.memoryUsage = "Estimated" // Memory calculation is in TouchBarController currently, could be moved
+            
+            func formatNet(_ bytesPerSec: Double) -> String {
+                if bytesPerSec >= 1024 * 1024 {
+                    return String(format: "%.1f MB/s", bytesPerSec / (1024 * 1024))
+                } else if bytesPerSec >= 1024 {
+                    return String(format: "%.1f KB/s", bytesPerSec / 1024)
+                } else {
+                    return String(format: "%.0f B/s", bytesPerSec)
+                }
+            }
+            self.netSpeed = "↓\(formatNet(status.netIn)) ↑\(formatNet(status.netOut))"
+            
             self.currentMode = status.mode
-            // To sync battery threshold, ideally we fetch config, but status doesn't include it right now
-            // We just let the UI picker set it.
+            self.isTouchBarEnabled = UserDefaults.standard.bool(forKey: "isTouchBarEnabled")
+            self.touchBarItems = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "mode", "temp", "fan", "load", "battery", "freq", "memory", "wattage", "network", "refresh"]
         }
     }
     
@@ -109,9 +126,7 @@ class MainWindowViewModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let success = self?.ipcClient.setTurboBoost(enabled: newState) ?? false
             if success {
-                DispatchQueue.main.async {
-                    self?.isTurboBoostEnabled = newState
-                }
+                self?.refreshStatus()
             }
         }
     }
@@ -120,9 +135,7 @@ class MainWindowViewModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let success = self?.ipcClient.setMode(mode, config: config) ?? false
             if success {
-                DispatchQueue.main.async {
-                    self?.currentMode = mode
-                }
+                self?.refreshStatus()
             }
         }
     }
@@ -156,60 +169,62 @@ struct DashboardView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("System Dashboard")
-                .font(.system(size: 28, weight: .bold, design: .monospaced))
+        ScrollView {
+            VStack(spacing: 20) {
+                Text("System Dashboard")
+                    .font(.system(size: 28, weight: .bold, design: .monospaced))
 
-            if !viewModel.isDaemonRunning {
-                Text("⚠️ Daemon is not running or not installed.")
-                    .foregroundColor(.red)
-                    .padding()
-                    .background(Color.red.opacity(0.1))
-                    .cornerRadius(8)
-            }
-
-            HStack(spacing: 40) {
-                StatCard(title: "CPU Temp", value: viewModel.cpuTemp, icon: "thermometer", color: .orange)
-                StatCard(title: "Fan Speed", value: viewModel.fanSpeed, icon: "fanblades", color: Color(NSColor.systemTeal))
-                StatCard(title: "CPU Load", value: viewModel.cpuLoad, icon: "cpu", color: .purple)
-            }
-            .padding(.top, 20)
-
-            Divider()
-
-            VStack(spacing: 10) {
-                HStack {
-                    Text("Turbo Boost Status:")
-                        .font(.system(.headline, design: .monospaced))
-                    Text(viewModel.isTurboBoostEnabled ? "Enabled (🔥)" : "Disabled (🧊)")
-                        .foregroundColor(viewModel.isTurboBoostEnabled ? .red : .blue)
-                        .fontWeight(.bold)
-                        .font(.system(.body, design: .monospaced))
-                }
-
-                Button(action: {
-                    viewModel.toggleTurboBoost()
-                }) {
-                    Text(viewModel.isTurboBoostEnabled ? "Disable Turbo Boost" : "Enable Turbo Boost")
+                if !viewModel.isDaemonRunning {
+                    Text("⚠️ Daemon is not running or not installed.")
+                        .foregroundColor(.red)
                         .padding()
-                        .frame(maxWidth: 200)
-                        .foregroundColor(.white)
-                        .background(viewModel.isTurboBoostEnabled ? Color.blue : Color.red)
+                        .background(Color.red.opacity(0.1))
                         .cornerRadius(8)
-                        .font(.system(.body, design: .monospaced))
                 }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(!viewModel.isDaemonRunning)
-                
-                Text("Current Mode: \(modeDisplayName)")
-                    .font(.system(.subheadline, design: .monospaced))
-                    .foregroundColor(.secondary)
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 20) {
+                    StatCard(title: "CPU Temp", value: viewModel.cpuTemp, icon: "thermometer", color: .orange)
+                    StatCard(title: "Fan Speed", value: viewModel.fanSpeed, icon: "fanblades", color: Color(NSColor.systemTeal))
+                    StatCard(title: "CPU Load", value: viewModel.cpuLoad, icon: "cpu", color: .purple)
+                    StatCard(title: "Power", value: viewModel.wattage, icon: "bolt.fill", color: .yellow)
+                    StatCard(title: "Network", value: viewModel.netSpeed, icon: "network", color: .blue)
+                }
+                .padding(.top, 10)
+
+                Divider()
+
+                VStack(spacing: 15) {
+                    HStack {
+                        Text("Turbo Boost:")
+                            .font(.system(.headline, design: .monospaced))
+                        Text(viewModel.isTurboBoostEnabled ? "Enabled (🔥)" : "Disabled (🧊)")
+                            .foregroundColor(viewModel.isTurboBoostEnabled ? .red : .blue)
+                            .fontWeight(.bold)
+                            .font(.system(.body, design: .monospaced))
+                    }
+
+                    Button(action: {
+                        viewModel.toggleTurboBoost()
+                    }) {
+                        Text(viewModel.isTurboBoostEnabled ? "Disable Turbo Boost" : "Enable Turbo Boost")
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 20)
+                            .foregroundColor(.white)
+                            .background(viewModel.isTurboBoostEnabled ? Color.blue : Color.red)
+                            .cornerRadius(8)
+                            .font(.system(.body, design: .monospaced))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .disabled(!viewModel.isDaemonRunning)
+                    
+                    Text("Current Mode: \(modeDisplayName)")
+                        .font(.system(.subheadline, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 10)
             }
-            .padding(.top, 20)
-            
-            Spacer()
+            .padding()
         }
-        .padding()
     }
 }
 
@@ -220,22 +235,23 @@ struct StatCard: View {
     let color: Color
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 30))
+                .font(.system(size: 24))
                 .foregroundColor(color)
             Text(title)
-                .font(.system(.subheadline, design: .monospaced))
+                .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(.secondary)
             Text(value)
-                .font(.system(.title2, design: .monospaced))
-                .fontWeight(.bold)
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
         }
-        .frame(width: 120, height: 120)
+        .frame(maxWidth: .infinity)
+        .frame(height: 100)
         .background(VisualEffectBlur(material: .popover, blendingMode: .withinWindow))
         .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.2), lineWidth: 1))
-        .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1), lineWidth: 1))
     }
 }
 
@@ -293,9 +309,6 @@ struct SettingsView: View {
         .onAppear {
             syncAutoLaunchState()
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AutoLaunchChanged"))) { _ in
-            syncAutoLaunchState()
-        }
     }
     
     private func syncAutoLaunchState() {
@@ -322,7 +335,6 @@ struct SettingsView: View {
         
         let appleScript = NSAppleScript(source: script)
         appleScript?.executeAndReturnError(nil)
-        NotificationCenter.default.post(name: NSNotification.Name("AutoLaunchChanged"), object: nil)
     }
     
     private func installDaemon() {
@@ -344,15 +356,20 @@ struct TouchBarConfigView: View {
     @ObservedObject var viewModel: MainWindowViewModel
     let allAvailableItems = [
         "tbState": "TB Status (🔥/🧊)",
+        "mode": "Operation Mode (🎯)",
         "temp": "CPU Temp (🌡)",
         "fan": "Fan Speed (🌀)",
         "load": "CPU Load (⚡️)",
         "battery": "Battery (🔋)",
-        "freq": "Frequency (🚀)"
+        "freq": "Frequency (🚀)",
+        "memory": "Memory (🧠)",
+        "wattage": "Power (🔌)",
+        "network": "Network (🌐)",
+        "refresh": "Refresh Rate (⏱)"
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 15) {
             Text("Touch Bar Configuration")
                 .font(.system(.title, design: .monospaced))
                 .fontWeight(.bold)
@@ -363,49 +380,31 @@ struct TouchBarConfigView: View {
                     viewModel.saveTouchBarConfig()
                 }
 
-            Text("Drag to reorder active items. Uncheck to disable.")
+            Text("Select items to display on Touch Bar:")
                 .foregroundColor(.secondary)
                 .font(.system(.subheadline, design: .monospaced))
             
-            List {
-                ForEach(viewModel.touchBarItems, id: \.self) { key in
-                    HStack {
-                        Image(systemName: "line.horizontal.3")
-                            .foregroundColor(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(allAvailableItems.keys.sorted(), id: \.self) { key in
                         Toggle(allAvailableItems[key] ?? key, isOn: Binding(
-                            get: { true },
-                            set: { isEnabled in
-                                if !isEnabled {
-                                    viewModel.touchBarItems.removeAll { $0 == key }
-                                    viewModel.saveTouchBarConfig()
-                                }
-                            }
-                        ))
-                    }
-                }
-                .onMove { indices, newOffset in
-                    viewModel.touchBarItems.move(fromOffsets: indices, toOffset: newOffset)
-                    viewModel.saveTouchBarConfig()
-                }
-                
-                ForEach(Array(allAvailableItems.keys).filter { !viewModel.touchBarItems.contains($0) }.sorted(), id: \.self) { key in
-                    HStack {
-                        Image(systemName: "line.horizontal.3")
-                            .foregroundColor(.secondary)
-                            .opacity(0.3)
-                        Toggle(allAvailableItems[key] ?? key, isOn: Binding(
-                            get: { false },
+                            get: { viewModel.touchBarItems.contains(key) },
                             set: { isEnabled in
                                 if isEnabled {
-                                    viewModel.touchBarItems.append(key)
-                                    viewModel.saveTouchBarConfig()
+                                    if !viewModel.touchBarItems.contains(key) {
+                                        viewModel.touchBarItems.append(key)
+                                    }
+                                } else {
+                                    viewModel.touchBarItems.removeAll { $0 == key }
                                 }
+                                viewModel.saveTouchBarConfig()
                             }
                         ))
+                        .padding(.vertical, 2)
                     }
                 }
+                .padding(.trailing, 10)
             }
-            .frame(height: 200)
             
             Spacer()
         }
@@ -415,21 +414,23 @@ struct TouchBarConfigView: View {
 
 struct AboutView: View {
     let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-    @State private var updateMessage: String = ""
+    @State private var isChecking = false
 
     var body: some View {
         VStack(spacing: 20) {
             Image(nsImage: NSImage(named: "AppIcon") ?? NSImage())
                 .resizable()
-                .frame(width: 100, height: 100)
+                .frame(width: 80, height: 80)
             
-            Text("TBControl")
-                .font(.system(.largeTitle, design: .monospaced))
-                .fontWeight(.bold)
-            
-            Text("Version \(version)")
-                .font(.system(.subheadline, design: .monospaced))
-                .foregroundColor(.secondary)
+            VStack(spacing: 5) {
+                Text("TBControl")
+                    .font(.system(.title, design: .monospaced))
+                    .fontWeight(.bold)
+                
+                Text("Version \(version)")
+                    .font(.system(.subheadline, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
             
             Text("A lightweight utility to control Intel Turbo Boost on macOS.")
                 .font(.system(.body, design: .monospaced))
@@ -437,17 +438,19 @@ struct AboutView: View {
                 .padding(.horizontal)
             
             HStack(spacing: 20) {
-                Button("Check for Updates") {
-                    checkForUpdates()
+                Button(action: {
+                    UpdateManager.shared.checkForUpdates(force: true)
+                }) {
+                    HStack {
+                        if isChecking {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text("Check for Updates")
+                    }
                 }
+                .disabled(isChecking)
                 
                 Link("Visit GitHub", destination: URL(string: "https://github.com/BestWaveRock/TBControl")!)
-            }
-            
-            if !updateMessage.isEmpty {
-                Text(updateMessage)
-                    .font(.system(.footnote, design: .monospaced))
-                    .foregroundColor(.blue)
             }
             
             Divider()
@@ -480,7 +483,7 @@ struct AboutView: View {
                 .foregroundColor(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: 150)
+            .frame(maxHeight: 120)
             .padding()
             .background(VisualEffectBlur(material: .popover, blendingMode: .withinWindow))
             .cornerRadius(8)
@@ -488,34 +491,5 @@ struct AboutView: View {
             Spacer()
         }
         .padding()
-    }
-    
-    private func checkForUpdates() {
-        updateMessage = "Checking..."
-        let url = URL(string: "https://api.github.com/repos/BestWaveRock/TBControl/releases/latest")!
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10
-        
-        URLSession.shared.dataTask(with: request) { data, response, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    updateMessage = "Error: \(error.localizedDescription)"
-                    return
-                }
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let tagName = json["tag_name"] as? String else {
-                    updateMessage = "Failed to parse version."
-                    return
-                }
-                
-                let latest = tagName.replacingOccurrences(of: "v", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                if latest.compare(version, options: .numeric) == .orderedDescending {
-                    updateMessage = "New version available: v\(latest). Please visit GitHub to download."
-                } else {
-                    updateMessage = "You are up to date."
-                }
-            }
-        }.resume()
     }
 }
