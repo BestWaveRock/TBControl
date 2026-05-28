@@ -9,15 +9,17 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-13
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer || true
+        run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer || true
 
       - name: Build and Package
+        env:
+          ARCH: x86_64
         run: |
           chmod +x Scripts/build.sh
           ./Scripts/build.sh

@@ -69,6 +69,11 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         touchBar.defaultItemIdentifiers = identifiers
         self.touchBar = touchBar
         
+        // Force creation of the stats item and add it to the system tray
+        if let item = touchBar.item(forIdentifier: .statsItem) {
+            NSTouchBarItem.addSystemTrayItem(item)
+        }
+        
         // Ensure the item is present in the Control Strip
         let identifier = NSTouchBarItem.Identifier.statsItem.rawValue as NSString
         DFRElementSetControlStripPresenceForIdentifier(identifier, true)

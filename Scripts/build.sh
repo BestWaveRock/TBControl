@@ -11,18 +11,31 @@ make clean 2>/dev/null || true
 make
 KEXT_BUNDLE="$PROJECT_DIR/Kext/build/DisableTurboBoost.kext"
 
-echo "==> 编译 Swift 组件 (Universal Binaries)..."
+echo "==> 编译 Swift 组件..."
 cd "$PROJECT_DIR"
-# 显式指定构建架构为 x86_64 和 arm64
-swift build -c release --product tbcontrold --arch x86_64 --arch arm64
-swift build -c release --product TBControl --arch x86_64 --arch arm64
 
-# 定义二进制文件路径 (Universal binary usually stays in .build/apple/Products/Release)
-# 或者在默认路径下，取决于 Swift 版本。我们将检查常规路径。
-RELEASE_DIR="$PROJECT_DIR/.build/apple/Products/Release"
-if [ ! -d "$RELEASE_DIR" ]; then
-    # 兼容旧版本或单架构路径
-    RELEASE_DIR="$PROJECT_DIR/.build/release"
+# 如果指定了 ARCH 环境变量，则强制使用该架构
+if [ ! -z "$ARCH" ]; then
+    echo "    [ARCH] 强制使用架构: $ARCH"
+    swift build -c release --product tbcontrold --arch "$ARCH"
+    swift build -c release --product TBControl --arch "$ARCH"
+    RELEASE_DIR="$PROJECT_DIR/.build/$ARCH-apple-macosx/release"
+    if [ ! -d "$RELEASE_DIR" ]; then
+        # 某些 Swift 版本可能路径不同
+        RELEASE_DIR="$PROJECT_DIR/.build/release"
+    fi
+else
+    # 尝试 Universal 构建，如果失败（如仅安装了 CLT）则退回到原生架构构建
+    if swift build -c release --product tbcontrold --arch x86_64 --arch arm64 2>/dev/null && \
+       swift build -c release --product TBControl --arch x86_64 --arch arm64 2>/dev/null; then
+        echo "    [OK] Universal Binary 构建成功"
+        RELEASE_DIR="$PROJECT_DIR/.build/apple/Products/Release"
+    else
+        echo "    [!] Universal 构建失败 (可能缺少完整 Xcode)，尝试原生架构构建..."
+        swift build -c release --product tbcontrold
+        swift build -c release --product TBControl
+        RELEASE_DIR="$PROJECT_DIR/.build/release"
+    fi
 fi
 
 echo "==> 创建 TBControl.app 包..."

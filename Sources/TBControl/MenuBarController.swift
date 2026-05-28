@@ -79,6 +79,9 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
             if #available(macOS 10.12.2, *) {
                 NSTouchBar.dismissSystemModalFunctionBar(touchBar)
             }
+            if let item = touchBar.item(forIdentifier: .statsItem) {
+                NSTouchBarItem.removeSystemTrayItem(item)
+            }
         }
         self.touchBarController = nil
     }
@@ -636,23 +639,54 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
 extension NSTouchBar {
     @available(macOS 10.12.2, *)
     static func presentSystemModalFunctionBar(_ touchBar: NSTouchBar, placement: Int, systemTrayItemIdentifier: NSTouchBarItem.Identifier) {
-        let selector = NSSelectorFromString("presentSystemModalFunctionBar:placement:systemTrayItemIdentifier:")
-        if self.responds(to: selector) {
-            // NSObject.perform() only supports up to 2 arguments. 
-            // We use unsafeBitCast to call the implementation directly for 3 arguments.
-            typealias MethodType = @convention(c) (AnyObject, Selector, NSTouchBar, Int, NSString) -> Void
-            if let impl = self.method(for: selector) {
-                let method = unsafeBitCast(impl, to: MethodType.self)
-                method(self, selector, touchBar, placement, systemTrayItemIdentifier.rawValue as NSString)
+        // Support both old and new private API names
+        let selectorNames = [
+            "presentSystemModalTouchBar:placement:systemTrayItemIdentifier:",
+            "presentSystemModalFunctionBar:placement:systemTrayItemIdentifier:"
+        ]
+        
+        for name in selectorNames {
+            let selector = NSSelectorFromString(name)
+            if self.responds(to: selector) {
+                typealias MethodType = @convention(c) (AnyObject, Selector, NSTouchBar, Int, NSString) -> Void
+                if let impl = self.method(for: selector) {
+                    let method = unsafeBitCast(impl, to: MethodType.self)
+                    method(self, selector, touchBar, placement, systemTrayItemIdentifier.rawValue as NSString)
+                    return
+                }
             }
         }
     }
     
     @available(macOS 10.12.2, *)
     static func dismissSystemModalFunctionBar(_ touchBar: NSTouchBar) {
-        let selector = NSSelectorFromString("dismissSystemModalFunctionBar:")
+        let selectorNames = [
+            "dismissSystemModalTouchBar:",
+            "dismissSystemModalFunctionBar:"
+        ]
+        
+        for name in selectorNames {
+            let selector = NSSelectorFromString(name)
+            if self.responds(to: selector) {
+                self.perform(selector, with: touchBar)
+                return
+            }
+        }
+    }
+}
+
+extension NSTouchBarItem {
+    static func addSystemTrayItem(_ item: NSTouchBarItem) {
+        let selector = NSSelectorFromString("addSystemTrayItem:")
         if self.responds(to: selector) {
-            self.perform(selector, with: touchBar)
+            self.perform(selector, with: item)
+        }
+    }
+    
+    static func removeSystemTrayItem(_ item: NSTouchBarItem) {
+        let selector = NSSelectorFromString("removeSystemTrayItem:")
+        if self.responds(to: selector) {
+            self.perform(selector, with: item)
         }
     }
 }

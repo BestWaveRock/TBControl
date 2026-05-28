@@ -28,8 +28,9 @@
   - 支持通用 `spxx` 固定小数点类型解析。
   - 自动识别并显示 0 RPM（风扇停止状态）。
 - **Touch Bar**: 
-  - 采用 **System Modal** 机制实现跨应用常驻显示。使用私有 API `presentSystemModalFunctionBar:placement:systemTrayItemIdentifier:` 并设置 `placement: 1` (System 级别) 以获得最高显示优先级。
-  - 调用私有函数 `DFRElementSetControlStripPresenceForIdentifier` 确保图标在 Control Strip 中常驻，并实时显示核心状态（如温度）。
+  - 采用 **System Modal** 机制实现跨应用常驻显示。使用私有 API `presentSystemModalTouchBar:placement:systemTrayItemIdentifier:` (注意: 部分 macOS 版本中为 `presentSystemModalFunctionBar...`) 并设置 `placement: 1` (System 级别) 以获得最高显示优先级。
+  - 调用 `NSTouchBarItem.addSystemTrayItem:` 将监控图标显式添加到 Control Strip。
+  - 调用私有函数 `DFRElementSetControlStripPresenceForIdentifier` 确保图标在 Control Strip 中常驻。
   - **重要**: 调用私有 C/ObjC API 时，必须显式将 Swift 类型桥接为 Objective-C 对象（如 `NSString`），直接传递 Swift 结构体或 String 会导致 `SIGSEGV` 崩溃。
   - **布局**: 组件化布局，采用等宽数字字体。更新文本后必须调用 `sizeToFit()` 以确保组件尺寸正确，防止界面空白。
   - 动态从 `sysctl machdep.cpu.brand_string` 提取 CPU 基础频率。
