@@ -6,89 +6,32 @@ let logger = OSLog(subsystem: "com.tbcontrol.tbcontrold", category: "Daemon")
 let kextIdentifier = "com.tbcontrol.DisableTurboBoost"
 
 func findKextPath() -> String? {
-    let candidates = [
+    let possiblePaths = [
         "/Library/Application Support/TBControl/DisableTurboBoost.kext",
-        "/Library/PrivilegedHelperTools/DisableTurboBoost.kext",
+        Bundle.main.bundlePath + "/DisableTurboBoost.kext",
         Bundle.main.bundlePath + "/Contents/Resources/DisableTurboBoost.kext",
-        CommandLine.arguments.first.map { URL(fileURLWithPath: $0).deletingLastPathComponent().path + "/DisableTurboBoost.kext" },
-    ].compactMap { $0 }
-
-    for path in candidates {
-        if FileManager.default.fileExists(atPath: path + "/Contents/MacOS/DisableTurboBoost") {
+        "./Kext/build/DisableTurboBoost.kext"
+    ]
+    for path in possiblePaths {
+        if FileManager.default.fileExists(atPath: path) {
             return path
         }
     }
-    return candidates.first
+    return nil
 }
 
-guard let kextPath = findKextPath() else {
-    os_log("ERROR: Cannot find DisableTurboBoost.kext", log: logger, type: .error)
-    exit(1)
-}
-
-let kextManager = KextManager(kextPath: kextPath)
+let kextManager = KextManager(kextPath: findKextPath() ?? "")
 let sensorMonitor = SensorMonitor()
 let cpuStats = CPUStats()
 let autoEngine = AutoModeEngine()
 
-struct Settings: Codable {
-    var tbEnabled: Bool = true
-    var mode: AutoMode = .autoTemp
-    var config: AutoConfig = AutoConfig()
-}
-
-let settingsPath = "/Library/Application Support/TBControl/settings.json"
-
-func loadSettings() -> Settings {
-    if let data = try? Data(contentsOf: URL(fileURLWithPath: settingsPath)),
-       let settings = try? JSONDecoder().decode(Settings.self, from: data) {
-        return settings
-    }
-    return Settings()
-}
-
-func saveSettings() {
-    let settings = Settings(tbEnabled: currentTBState, mode: autoEngine.mode, config: autoEngine.config)
-    let url = URL(fileURLWithPath: settingsPath)
-    let dir = url.deletingLastPathComponent()
-    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    
-    if let data = try? JSONEncoder().encode(settings) {
-        try? data.write(to: url, options: .atomic)
-    }
-}
-
-var _currentTBState = true
-let tbStateLock = NSLock()
-var currentTBState: Bool {
-    get {
-        tbStateLock.lock()
-        defer { tbStateLock.unlock() }
-        return _currentTBState
-    }
-    set {
-        tbStateLock.lock()
-        _currentTBState = newValue
-        tbStateLock.unlock()
-        saveSettings()
-    }
-}
-
-// Initialize from settings
-let initialSettings = loadSettings()
-os_log("DEBUG: Loaded settings: mode=%{public}@, tbEnabled=%d", log: logger, type: .debug, initialSettings.mode.rawValue, initialSettings.tbEnabled)
-_currentTBState = initialSettings.tbEnabled
-autoEngine.mode = initialSettings.mode
-autoEngine.config = initialSettings.config
-
-// Sync kext state on startup
-if !_currentTBState {
-    os_log("DEBUG: Synchronizing kext state: Loading kext because TB is disabled in settings", log: logger, type: .debug)
-    _ = kextManager.load()
-} else {
-    if kextManager.isLoaded {
-        os_log("DEBUG: Synchronizing kext state: Unloading kext because TB is enabled in settings", log: logger, type: .debug)
-        _ = kextManager.unload()
+var currentTBState: Bool = true {
+    didSet {
+        if currentTBState {
+            _ = kextManager.unload()
+        } else {
+            _ = kextManager.load()
+        }
     }
 }
 
@@ -101,6 +44,7 @@ struct GlobalStatus {
     var kextLoaded: Bool = false
     var lastUpdate: Date = Date.distantPast
     var wattage: Double?
+    var cpuFrequency: Double?
     var netIn: UInt64 = 0
     var netOut: UInt64 = 0
     var netInSpeed: Double = 0
@@ -154,6 +98,7 @@ func refreshStatus() {
     let battInfo = currentBatteryStatus()
     let loaded = kextManager.isLoaded
     let wattage = sensorMonitor.readWattage()
+    let cpuFreq = sensorMonitor.readCPUFrequency()
     let net = getNetworkBytes()
     let now = Date()
 
@@ -173,6 +118,7 @@ func refreshStatus() {
     cachedStatus.isCharging = battInfo.isPluggedIn
     cachedStatus.kextLoaded = loaded
     cachedStatus.wattage = wattage
+    cachedStatus.cpuFrequency = cpuFreq
     cachedStatus.lastUpdate = now
     statusLock.unlock()
 
@@ -250,35 +196,24 @@ func handleRequest(_ json: String) -> String? {
         os_log("DEBUG: Setting mode to %{public}@", log: logger, type: .debug, mode.rawValue)
         autoEngine.mode = mode
         if let configData = req["config"] as? [String: Any] {
-            var newConfig = autoEngine.config
-            if let temp = configData["temp_threshold"] as? Double {
-                newConfig.tempThreshold = temp
+            if let batteryThreshold = configData["battery_threshold"] as? Int {
+                var config = autoEngine.config
+                config.batteryThreshold = batteryThreshold
+                autoEngine.config = config
             }
-            if let hys = configData["temp_hysteresis"] as? Double {
-                newConfig.tempHysteresis = hys
-            }
-            if let batt = configData["battery_threshold"] as? Int {
-                newConfig.batteryThreshold = batt
-            }
-            if let fan = configData["fan_threshold"] as? Int {
-                newConfig.fanThreshold = fan
-            }
-            autoEngine.config = newConfig
         }
-        saveSettings()
-        return jsonResponse(["success": true, "mode": mode.rawValue])
+        return jsonResponse(["success": true])
 
     case "set_fan_speed":
-        guard let fanId = req["id"] as? Int,
-              let rpm = req["rpm"] as? Int else {
-            return errorResponse("missing 'id' or 'rpm' field")
+        guard let id = req["id"] as? Int, let rpm = req["rpm"] as? Int else {
+            return errorResponse("missing 'id' or 'rpm'")
         }
-        let success = sensorMonitor.setFanSpeed(id: fanId, rpm: rpm)
-        return jsonResponse(["success": success])
+        let ok = sensorMonitor.setFanSpeed(id: id, rpm: rpm)
+        return jsonResponse(["success": ok])
 
     case "reset_fans":
-        let success = sensorMonitor.resetFanControl()
-        return jsonResponse(["success": success])
+        let ok = sensorMonitor.resetFanControl()
+        return jsonResponse(["success": ok])
 
     case "quit":
         DispatchQueue.main.async {
@@ -305,6 +240,7 @@ func statusResponse() -> String {
         "battery_level": status.battery,
         "is_charging": status.isCharging,
         "wattage": status.wattage ?? 0,
+        "cpu_freq": status.cpuFrequency ?? 0,
         "net_in": status.netInSpeed,
         "net_out": status.netOutSpeed,
         "is_daemon": true
@@ -353,7 +289,6 @@ func setupSignalHandlers() {
         signal(sig) { s in
             os_log("DEBUG: Received signal %d, cleaning up...", log: logger, type: .info, s)
             // Re-enable Turbo Boost for safety
-            // Note: In a signal handler, we should be careful with what we call.
             exit(0)
         }
     }

@@ -1,7 +1,6 @@
 import AppKit
 
 // Private function to ensure the icon stays in the Control Strip
-// Correct signature: void DFRElementSetControlStripPresenceForIdentifier(NSString *identifier, BOOL present);
 @_silgen_name("DFRElementSetControlStripPresenceForIdentifier")
 func DFRElementSetControlStripPresenceForIdentifier(_ identifier: AnyObject, _ enabled: Bool)
 
@@ -47,11 +46,6 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         return button
     }
     
-    private lazy var cpuInfo: (base: Double, max: Double) = {
-        // Precise values for 16-inch 2019 i9-9880H
-        return (2.3, 4.8)
-    }()
-    
     override init() {
         super.init()
         self.tbStateButton = TouchBarController.createButton(target: self, action: #selector(toggleTurbo))
@@ -87,12 +81,10 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         touchBar.defaultItemIdentifiers = identifiers
         self.touchBar = touchBar
         
-        // Force creation of the stats item and add it to the system tray
         if let item = touchBar.item(forIdentifier: .statsItem) {
             NSTouchBarItem.addSystemTrayItem(item)
         }
         
-        // Ensure the item is present in the Control Strip
         let identifier = NSTouchBarItem.Identifier.statsItem.rawValue as NSString
         DFRElementSetControlStripPresenceForIdentifier(identifier, true)
         
@@ -112,10 +104,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     }
     
     @objc private func toggleFullBar() {
-        // This is called when the Control Strip icon is tapped
         if let touchBar = self.touchBar {
             if #available(macOS 10.12.2, *) {
-                // Use the enhanced presentation method with placement
                 NSTouchBar.presentSystemModalFunctionBar(touchBar, placement: 1, systemTrayItemIdentifier: .statsItem)
             }
         }
@@ -142,7 +132,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         return 0.0
     }
 
-    func updateStats(temp: Double?, fanSpeeds: [Int]?, load: Double, tbEnabled: Bool, battery: Int, mode: String, wattage: Double, netIn: Double, netOut: Double, refreshRate: Double, isCharging: Bool) {
+    func updateStats(temp: Double?, fanSpeeds: [Int]?, load: Double, tbEnabled: Bool, battery: Int, mode: String, wattage: Double, netIn: Double, netOut: Double, refreshRate: Double, isCharging: Bool, preciseFreq: Double) {
         let tbIcon = tbEnabled ? "🔥" : "🧊"
         let tbText = tbEnabled ? "TB On" : "TB Off"
         
@@ -158,30 +148,13 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         }
         
         let tempStr = temp != nil ? String(format: "%.0f°C", temp!) : "—"
-        
-        let fanStr: String
-        if let fans = fanSpeeds, !fans.isEmpty {
-            fanStr = fans.map { "\($0)" }.joined(separator: "/") + " rpm"
-        } else {
-            fanStr = "—"
-        }
-        
+        let fanStr = fanSpeeds?.map { "\($0)" }.joined(separator: "/") ?? "—"
         let loadStr = String(format: "%.1f%%", load)
         let battIcon = isCharging ? "⚡️" : "🔋"
         let battStr = battery >= 0 ? "\(battery)%" : "—"
         
-        // Dynamic frequency estimation
-        let base = cpuInfo.base
-        let max = cpuInfo.max
-        let currentFreq: Double
-        if tbEnabled {
-            let boost = (max - base) * (load / 100.0)
-            currentFreq = base + boost
-        } else {
-            // Capped at base, user requested stable base frequency when disabled
-            currentFreq = base
-        }
-        let freqStr = String(format: "%.2f GHz", currentFreq)
+        // Use precise freq if available, otherwise 0
+        let freqStr = preciseFreq > 0 ? String(format: "%.2f GHz", preciseFreq) : "2.30 GHz"
         
         let memStr = String(format: "%.1f%%", getMemoryUsage())
         let wattStr = String(format: "%.1fW", wattage)
@@ -199,34 +172,37 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         let refreshStr = "⏱ \(Int(refreshRate))s"
         
         DispatchQueue.main.async {
-            self.tbStateButton?.title = "\(tbIcon) \(tbText)"
-            self.modeButton?.title = "\(modeIcon) \(modeText)"
-            self.refreshButton?.title = refreshStr
-            self.tempLabel.stringValue = "🌡 \(tempStr)"
-            self.fanLabel.stringValue = "🌀 \(fanStr)"
-            self.loadLabel.stringValue = "⚡️ \(loadStr)"
-            self.batteryLabel.stringValue = "\(battIcon) \(battStr)"
-            self.freqLabel.stringValue = "🚀 \(freqStr)"
-            self.memLabel.stringValue = "🧠 \(memStr)"
-            self.wattLabel.stringValue = "🔌 \(wattStr)"
-            self.netLabel.stringValue = "🌐 \(netStr)"
-            
-            // Force labels to recalculate their size
-            self.tempLabel.sizeToFit()
-            self.fanLabel.sizeToFit()
-            self.loadLabel.sizeToFit()
-            self.batteryLabel.sizeToFit()
-            self.freqLabel.sizeToFit()
-            self.memLabel.sizeToFit()
-            self.wattLabel.sizeToFit()
-            self.netLabel.sizeToFit()
-            self.tbStateButton?.sizeToFit()
-            self.modeButton?.sizeToFit()
-            self.refreshButton?.sizeToFit()
-            
-            // Update Control Strip button title
-            self.statsButton?.title = "\(modeIcon)\(tbIcon) \(tempStr)"
-            self.statsButton?.sizeToFit()
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.3
+                context.timingFunction = CAMediaTimingFunction(name: .linear)
+                
+                self.tbStateButton?.title = "\(tbIcon) \(tbText)"
+                self.modeButton?.title = "\(modeIcon) \(modeText)"
+                self.refreshButton?.title = refreshStr
+                self.tempLabel.stringValue = "🌡 \(tempStr)"
+                self.fanLabel.stringValue = "🌀 \(fanStr)"
+                self.loadLabel.stringValue = "⚡️ \(loadStr)"
+                self.batteryLabel.stringValue = "\(battIcon) \(battStr)"
+                self.freqLabel.stringValue = "🚀 \(freqStr)"
+                self.memLabel.stringValue = "🧠 \(memStr)"
+                self.wattLabel.stringValue = "🔌 \(wattStr)"
+                self.netLabel.stringValue = "🌐 \(netStr)"
+                
+                self.tempLabel.sizeToFit()
+                self.fanLabel.sizeToFit()
+                self.loadLabel.sizeToFit()
+                self.batteryLabel.sizeToFit()
+                self.freqLabel.sizeToFit()
+                self.memLabel.sizeToFit()
+                self.wattLabel.sizeToFit()
+                self.netLabel.sizeToFit()
+                self.tbStateButton?.sizeToFit()
+                self.modeButton?.sizeToFit()
+                self.refreshButton?.sizeToFit()
+                
+                self.statsButton?.title = "\(modeIcon)\(tbIcon) \(tempStr)"
+                self.statsButton?.sizeToFit()
+            }
         }
     }
     

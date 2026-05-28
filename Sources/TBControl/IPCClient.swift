@@ -3,48 +3,7 @@ import Foundation
 class IPCClient {
     private let socketPath = "/tmp/tbcontrol.sock"
 
-    func sendCommand(_ dict: [String: Any]) -> [String: Any]? {
-        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
-        return sendData(data)
-    }
-
-    func getStatus() -> StatusInfo? {
-        guard let resp = sendCommand(["cmd": "status"]),
-              let success = resp["success"] as? Bool, success else { return nil }
-        return StatusInfo(
-            tbEnabled: resp["tb_enabled"] as? Bool ?? true,
-            cpuTemp: resp["cpu_temp"] as? Double,
-            fanSpeeds: resp["fan_speeds"] as? [Int],
-            cpuLoad: resp["cpu_load"] as? Double ?? 0,
-            mode: resp["mode"] as? String ?? "manual",
-            batteryLevel: resp["battery_level"] as? Int ?? -1,
-            isCharging: resp["is_charging"] as? Bool ?? false,
-            wattage: resp["wattage"] as? Double ?? 0,
-            netIn: resp["net_in"] as? Double ?? 0,
-            netOut: resp["net_out"] as? Double ?? 0
-        )
-    }
-
-    func setTurboBoost(enabled: Bool) -> Bool {
-        guard let resp = sendCommand(["cmd": "set_tb", "enabled": enabled]),
-              let success = resp["success"] as? Bool else { return false }
-        return success
-    }
-
-    func setMode(_ mode: String, config: [String: Any] = [:]) -> Bool {
-        var cmd: [String: Any] = ["cmd": "set_mode", "mode": mode]
-        if !config.isEmpty { cmd["config"] = config }
-        guard let resp = sendCommand(cmd), let success = resp["success"] as? Bool else { return false }
-        return success
-    }
-
-    func setRefreshInterval(_ interval: Double) -> Bool {
-        guard let resp = sendCommand(["cmd": "set_refresh", "interval": interval]),
-              let success = resp["success"] as? Bool else { return false }
-        return success
-    }
-
-    private func sendData(_ data: Data) -> [String: Any]? {
+    func sendData(_ data: Data) -> [String: Any]? {
         let sock = socket(AF_UNIX, SOCK_STREAM, 0)
         guard sock >= 0 else { return nil }
         defer { close(sock) }
@@ -92,6 +51,48 @@ class IPCClient {
         }
         return json
     }
+
+    func sendCommand(_ dict: [String: Any]) -> [String: Any]? {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
+        return sendData(data)
+    }
+
+    func getStatus() -> StatusInfo? {
+        guard let resp = sendCommand(["cmd": "status"]),
+              let success = resp["success"] as? Bool, success else { return nil }
+        return StatusInfo(
+            tbEnabled: resp["tb_enabled"] as? Bool ?? true,
+            cpuTemp: resp["cpu_temp"] as? Double,
+            fanSpeeds: resp["fan_speeds"] as? [Int],
+            cpuLoad: resp["cpu_load"] as? Double ?? 0,
+            mode: resp["mode"] as? String ?? "manual",
+            batteryLevel: resp["battery_level"] as? Int ?? -1,
+            isCharging: resp["is_charging"] as? Bool ?? false,
+            wattage: resp["wattage"] as? Double ?? 0,
+            cpuFreq: resp["cpu_freq"] as? Double ?? 0,
+            netIn: resp["net_in"] as? Double ?? 0,
+            netOut: resp["net_out"] as? Double ?? 0
+        )
+    }
+
+    func setTurboBoost(enabled: Bool) -> Bool {
+        guard let resp = sendCommand(["cmd": "set_tb", "enabled": enabled]),
+              let success = resp["success"] as? Bool else { return false }
+        return success
+    }
+
+    func setMode(_ mode: String, config: [String: Any] = [:]) -> Bool {
+        var cmd: [String: Any] = ["cmd": "set_mode", "mode": mode]
+        if !config.isEmpty { cmd["config"] = config }
+        guard let resp = sendCommand(cmd), let success = resp["success"] as? Bool else { return false }
+        return success
+    }
+
+    func setRefreshInterval(_ interval: Double) -> Bool {
+        guard let resp = sendCommand(["cmd": "set_refresh", "interval": interval]),
+              let success = resp["success"] as? Bool else { return false }
+        return success
+    }
 }
 
 struct StatusInfo {
@@ -103,6 +104,7 @@ struct StatusInfo {
     let batteryLevel: Int
     let isCharging: Bool
     let wattage: Double
+    let cpuFreq: Double
     let netIn: Double
     let netOut: Double
 }

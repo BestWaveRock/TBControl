@@ -281,6 +281,11 @@ class SensorMonitor {
     }
 
     func readWattage() -> Double? {
+        // Try precise SMC Package Power (PSTR) first, then fallback to battery stats
+        if let pstr = readKey("PSTR") {
+            return pstr
+        }
+        
         let matching = IOServiceMatching("AppleSmartBattery")
         let service = IOServiceGetMatchingService(0, matching)
         if service != 0 {
@@ -293,6 +298,18 @@ class SensorMonitor {
                 return abs(voltage * amperage)
             }
             IOObjectRelease(service)
+        }
+        return nil
+    }
+
+    func readCPUFrequency() -> Double? {
+        // Stats uses PC0C (CPU 0 Core frequency) or PC0G
+        // On Intel, these keys often represent the current frequency in MHz
+        if let freqMHz = readKey("PC0C") {
+            return freqMHz / 1000.0
+        }
+        if let freqMHz = readKey("PC0G") {
+            return freqMHz / 1000.0
         }
         return nil
     }

@@ -421,7 +421,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, mode: st.mode, message: nil, daemonRunning: isDaemonRunning)
         
         if isTouchBarEnabled {
-            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode, wattage: st.wattage, netIn: st.netIn, netOut: st.netOut, refreshRate: currentRefreshRate, isCharging: st.isCharging)
+            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode, wattage: st.wattage, netIn: st.netIn, netOut: st.netOut, refreshRate: currentRefreshRate, isCharging: st.isCharging, preciseFreq: st.cpuFreq)
         }
     }
 
