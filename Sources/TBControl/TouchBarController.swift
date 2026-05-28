@@ -43,18 +43,25 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         return button
     }
     
-    private lazy var baseFrequency: String = {
+    private lazy var cpuInfo: (base: Double, max: Double) = {
         var size = size_t()
         sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
         var brand = [CChar](repeating: 0, count: size)
         sysctlbyname("machdep.cpu.brand_string", &brand, &size, nil, 0)
         let brandString = String(cString: brand)
         
-        // Match something like "2.30GHz" or "2.3GHz"
+        var baseFreq = 2.3 // Fallback
         if let range = brandString.range(of: #"\d+\.\d+GHz"#, options: .regularExpression) {
-            return String(brandString[range])
+            let freqStr = brandString[range].replacingOccurrences(of: "GHz", with: "")
+            baseFreq = Double(freqStr) ?? 2.3
         }
-        return "2.3GHz" // Fallback
+        
+        // Estimate Max Turbo (Base + 1.0~2.5 GHz depending on model)
+        // For i9-9880H it's 4.8GHz, for i7-9750H it's 4.5GHz. 
+        // A generic Base + 1.5 is a safe visible estimate for UI.
+        let maxFreq = baseFreq + 1.5
+        
+        return (baseFreq, maxFreq)
     }()
     
     override init() {
@@ -165,7 +172,23 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         
         let loadStr = String(format: "%.1f%%", load)
         let battStr = battery >= 0 ? "\(battery)%" : "—"
-        let freqStr = tbEnabled ? "> \(baseFrequency)" : baseFrequency
+        
+        // Dynamic frequency estimation
+        let base = cpuInfo.base
+        let max = cpuInfo.max
+        let currentFreq: Double
+        if tbEnabled {
+            // Estimate based on load: base + (max - base) * (load/100)
+            // Minimum at low load should still be around base or slightly lower
+            let boost = (max - base) * (load / 100.0)
+            currentFreq = base + boost
+        } else {
+            // Capped at base. SpeedStep/EIST can still drop it down.
+            // Estimate: base * (0.8 + 0.2 * load/100)
+            currentFreq = base * (0.8 + 0.2 * (load / 100.0))
+        }
+        let freqStr = String(format: "%.2f GHz", currentFreq)
+        
         let memStr = String(format: "%.1f%%", getMemoryUsage())
         
         DispatchQueue.main.async {
