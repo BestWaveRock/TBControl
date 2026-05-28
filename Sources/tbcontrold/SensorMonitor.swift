@@ -140,57 +140,72 @@ class SensorMonitor {
         return writeKey("FS! ", bytes: bytes, size: 2)
     }
 
+    func readWattage() -> Double? {
+        // Try precise SMC Package Power (PSTR) first
+        if let pstr = readKey("PSTR") { return pstr }
+        if let pcpc = readKey("PCPC") { return pcpc }
+
+        // Fallback to Battery IOKit
+        let matching = IOServiceMatching("AppleSmartBattery")
+        let service = IOServiceGetMatchingService(0, matching)
+        if service != 0 {
+            var props: Unmanaged<CFMutableDictionary>?
+            if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+               let dict = props?.takeRetainedValue() as? [String: Any] {
+                let voltage = abs(dict["Voltage"] as? Double ?? 0) / 1000.0
+                let amperage = abs(dict["Amperage"] as? Double ?? 0) / 1000.0
+                IOObjectRelease(service)
+                return voltage * amperage
+            }
+            IOObjectRelease(service)
+        }
+        return nil
+    }
+
+    func readCPUFrequency() -> Double? {
+        // Use X86PlatformPlugin P-States and P-Limit logic
+        let service = IOServiceGetMatchingService(0, IOServiceMatching("X86PlatformPlugin"))
+        guard service != 0 else { return nil }
+        
+        var freq: Double? = nil
+        var props: Unmanaged<CFMutableDictionary>?
+        if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+           let dict = props?.takeRetainedValue() as? [String: Any] {
+            
+            if let diag = dict["IOPPFDiagDict"] as? [String: Any],
+               let limit = diag["CPUPLimitDict"] as? [String: Any],
+               let limitIdx = limit["currentLimit"] as? Int,
+               let pstates = dict["CPUPStates"] as? [[String: Any]],
+               limitIdx < pstates.count {
+                
+                if let freqMHz = pstates[limitIdx]["Frequency"] as? Double {
+                    freq = freqMHz / 1000.0
+                }
+            }
+        }
+        IOObjectRelease(service)
+        return freq
+    }
+
     private func writeKey(_ key: String, bytes: [UInt8], size: UInt32) -> Bool {
         guard conn != 0 else { return false }
         
         var inputStruct = SMCParamStruct()
         inputStruct.key = fourCharCode(key)
         inputStruct.keyInfo.dataSize = size
-        inputStruct.data8 = UInt8(SMC_CMD_WRITE_BYTES)
+        inputStruct.data8 = 6 // SMC_CMD_WRITE_BYTES
         
-        for (i, byte) in bytes.enumerated() {
-            if i >= 32 { break }
-            switch i {
-            case 0: inputStruct.bytes.0 = byte
-            case 1: inputStruct.bytes.1 = byte
-            case 2: inputStruct.bytes.2 = byte
-            case 3: inputStruct.bytes.3 = byte
-            case 4: inputStruct.bytes.4 = byte
-            case 5: inputStruct.bytes.5 = byte
-            case 6: inputStruct.bytes.6 = byte
-            case 7: inputStruct.bytes.7 = byte
-            case 8: inputStruct.bytes.8 = byte
-            case 9: inputStruct.bytes.9 = byte
-            case 10: inputStruct.bytes.10 = byte
-            case 11: inputStruct.bytes.11 = byte
-            case 12: inputStruct.bytes.12 = byte
-            case 13: inputStruct.bytes.13 = byte
-            case 14: inputStruct.bytes.14 = byte
-            case 15: inputStruct.bytes.15 = byte
-            case 16: inputStruct.bytes.16 = byte
-            case 17: inputStruct.bytes.17 = byte
-            case 18: inputStruct.bytes.18 = byte
-            case 19: inputStruct.bytes.19 = byte
-            case 20: inputStruct.bytes.20 = byte
-            case 21: inputStruct.bytes.21 = byte
-            case 22: inputStruct.bytes.22 = byte
-            case 23: inputStruct.bytes.23 = byte
-            case 24: inputStruct.bytes.24 = byte
-            case 25: inputStruct.bytes.25 = byte
-            case 26: inputStruct.bytes.26 = byte
-            case 27: inputStruct.bytes.27 = byte
-            case 28: inputStruct.bytes.28 = byte
-            case 29: inputStruct.bytes.29 = byte
-            case 30: inputStruct.bytes.30 = byte
-            case 31: inputStruct.bytes.31 = byte
-            default: break
-            }
-        }
+        // Manually copy tuple elements
+        inputStruct.bytes.0 = bytes.count > 0 ? bytes[0] : 0
+        inputStruct.bytes.1 = bytes.count > 1 ? bytes[1] : 0
+        inputStruct.bytes.2 = bytes.count > 2 ? bytes[2] : 0
+        inputStruct.bytes.3 = bytes.count > 3 ? bytes[3] : 0
+        // ... rest are 0 by default
 
         var outputStruct = SMCParamStruct()
         var outputSize = MemoryLayout<SMCParamStruct>.size
 
-        let result = IOConnectCallMethod(conn, UInt32(KERNEL_INDEX_SMC), nil, 0, &inputStruct, MemoryLayout<SMCParamStruct>.size, nil, nil, &outputStruct, &outputSize)
+        let result = IOConnectCallMethod(conn, 2, nil, 0, &inputStruct, MemoryLayout<SMCParamStruct>.size, nil, nil, &outputStruct, &outputSize)
 
         return result == kIOReturnSuccess && outputStruct.result == 0
     }
@@ -202,12 +217,12 @@ class SensorMonitor {
         var inputStruct = SMCParamStruct()
         inputStruct.key = fourCharCode(key)
         inputStruct.keyInfo.dataSize = info.size
-        inputStruct.data8 = UInt8(SMC_CMD_READ_BYTES)
+        inputStruct.data8 = 5 // SMC_CMD_READ_BYTES
 
         var outputStruct = SMCParamStruct()
         var outputSize = MemoryLayout<SMCParamStruct>.size
 
-        let result = IOConnectCallMethod(conn, UInt32(KERNEL_INDEX_SMC), nil, 0, &inputStruct, MemoryLayout<SMCParamStruct>.size, nil, nil, &outputStruct, &outputSize)
+        let result = IOConnectCallMethod(conn, 2, nil, 0, &inputStruct, MemoryLayout<SMCParamStruct>.size, nil, nil, &outputStruct, &outputSize)
 
         guard result == kIOReturnSuccess && outputStruct.result == 0 else { return nil }
 
@@ -217,12 +232,12 @@ class SensorMonitor {
     private func getInfo(_ key: String) -> (size: UInt32, type: String) {
         var inputStruct = SMCParamStruct()
         inputStruct.key = fourCharCode(key)
-        inputStruct.data8 = UInt8(SMC_CMD_READ_KEYINFO)
+        inputStruct.data8 = 9 // SMC_CMD_READ_KEYINFO
 
         var outputStruct = SMCParamStruct()
         var outputSize = MemoryLayout<SMCParamStruct>.size
 
-        let result = IOConnectCallMethod(conn, UInt32(KERNEL_INDEX_SMC), nil, 0, &inputStruct, MemoryLayout<SMCParamStruct>.size, nil, nil, &outputStruct, &outputSize)
+        let result = IOConnectCallMethod(conn, 2, nil, 0, &inputStruct, MemoryLayout<SMCParamStruct>.size, nil, nil, &outputStruct, &outputSize)
 
         guard result == kIOReturnSuccess && outputStruct.result == 0 else { return (0, "") }
 
@@ -232,12 +247,10 @@ class SensorMonitor {
     private func parseValue(data: SMCBytes, type: String) -> Double? {
         let t = type.trimmingCharacters(in: .whitespaces).lowercased()
         
-        // Generic SPxx type parsing (e.g., sp78, spb4)
         if t.hasPrefix("sp") && t.count == 4 {
             let chars = Array(t)
             if let fractionBits = Int(String(chars[3]), radix: 16) {
                 let val = (UInt16(data.0) << 8) | UInt16(data.1)
-                // Use signed Int16 for SP types as they are typically fixed-point signed
                 return Double(Int16(bitPattern: val)) / pow(2.0, Double(fractionBits))
             }
         }
@@ -279,43 +292,8 @@ class SensorMonitor {
         ]
         return String(bytes.compactMap { UnicodeScalar($0).isASCII ? Character(UnicodeScalar($0)) : nil })
     }
-
-    func readWattage() -> Double? {
-        // Try precise SMC Package Power (PSTR) first, then fallback to battery stats
-        if let pstr = readKey("PSTR") {
-            return pstr
-        }
-        
-        let matching = IOServiceMatching("AppleSmartBattery")
-        let service = IOServiceGetMatchingService(0, matching)
-        if service != 0 {
-            var props: Unmanaged<CFMutableDictionary>?
-            if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
-               let dict = props?.takeRetainedValue() as? [String: Any] {
-                let voltage = (dict["Voltage"] as? Double ?? 0) / 1000.0
-                let amperage = (dict["Amperage"] as? Double ?? 0) / 1000.0
-                IOObjectRelease(service)
-                return abs(voltage * amperage)
-            }
-            IOObjectRelease(service)
-        }
-        return nil
-    }
-
-    func readCPUFrequency() -> Double? {
-        // Stats uses PC0C (CPU 0 Core frequency) or PC0G
-        // On Intel, these keys often represent the current frequency in MHz
-        if let freqMHz = readKey("PC0C") {
-            return freqMHz / 1000.0
-        }
-        if let freqMHz = readKey("PC0G") {
-            return freqMHz / 1000.0
-        }
-        return nil
-    }
 }
 
-// exelban/stats aligned 80-byte SMCParamStruct
 private struct SMCParamStruct {
     struct SMCVersion {
         var major: UInt8 = 0
@@ -352,8 +330,3 @@ private struct SMCParamStruct {
 }
 
 private typealias SMCBytes = (UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8, UInt8)
-
-private let KERNEL_INDEX_SMC = 2
-private let SMC_CMD_READ_BYTES = 5
-private let SMC_CMD_WRITE_BYTES = 6
-private let SMC_CMD_READ_KEYINFO = 9
