@@ -165,7 +165,7 @@ class SensorMonitor {
     func readCPUFrequency() -> Double? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/powermetrics")
-        // Use a very short sample interval for responsiveness
+        // Use a short sample interval for responsiveness
         task.arguments = ["-n", "1", "-i", "100", "--samplers", "cpu_power"]
         
         let out = Pipe()
@@ -177,10 +177,9 @@ class SensorMonitor {
             let data = out.fileHandleForReading.readDataToEndOfFile()
             guard let output = String(data: data, encoding: .utf8) else { return nil }
             
-            // Extract all occurrences of "(XXXX.XX Mhz)" and take the maximum
-            // This captures per-core frequencies
-            let pattern = #"\((\d+\.\d+) Mhz\)"#
-            let regex = try NSRegularExpression(pattern: pattern)
+            // Extract all occurrences of "(XXXX.XX Mhz)" case-insensitively and take the maximum
+            let pattern = #"\((\d+(?:\.\d+)?)\s*M[Hh]z\)"#
+            let regex = try NSRegularExpression(pattern: pattern, options: .caseInsensitive)
             let nsRange = NSRange(output.startIndex..<output.endIndex, in: output)
             let matches = regex.matches(in: output, range: nsRange)
             
@@ -191,10 +190,14 @@ class SensorMonitor {
                     if mhz > maxMhz { maxMhz = mhz }
                 }
             }
-            return maxMhz > 0 ? maxMhz / 1000.0 : nil
+            
+            if maxMhz > 0 {
+                return maxMhz / 1000.0
+            }
         } catch {
-            return nil
+            print("DEBUG: powermetrics execution failed: \(error)")
         }
+        return nil
     }
 
     private func writeKey(_ key: String, bytes: [UInt8], size: UInt32) -> Bool {
