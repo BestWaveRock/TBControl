@@ -48,6 +48,7 @@ struct MainWindowView: View {
                     }
             }
             .padding()
+            .animation(.linear(duration: 0.3), value: viewModel.currentMode)
         }
         .frame(minWidth: 550, minHeight: 450)
     }
@@ -57,6 +58,7 @@ class MainWindowViewModel: ObservableObject {
     @Published var cpuTemp: String = "—"
     @Published var fanSpeed: String = "—"
     @Published var cpuLoad: String = "—"
+    @Published var cpuFrequency: String = "—"
     @Published var wattage: String = "—"
     @Published var netSpeed: String = "—"
     @Published var memoryUsage: String = "—"
@@ -91,33 +93,35 @@ class MainWindowViewModel: ObservableObject {
         guard let status = ipcClient.getStatus() else { return }
 
         DispatchQueue.main.async {
-            self.isTurboBoostEnabled = status.tbEnabled
-            self.cpuTemp = status.cpuTemp != nil ? String(format: "%.1f°C", status.cpuTemp!) : "—"
-            
-            if let fans = status.fanSpeeds, !fans.isEmpty {
-                self.fanSpeed = fans.map { "\($0)" }.joined(separator: " / ") + " rpm"
-            } else {
-                self.fanSpeed = "—"
-            }
-            
-            self.cpuLoad = String(format: "%.1f%%", status.cpuLoad)
-            self.wattage = String(format: "%.1fW", status.wattage)
-            self.memoryUsage = "Estimated" // Memory calculation is in TouchBarController currently, could be moved
-            
-            func formatNet(_ bytesPerSec: Double) -> String {
-                if bytesPerSec >= 1024 * 1024 {
-                    return String(format: "%.1f MB/s", bytesPerSec / (1024 * 1024))
-                } else if bytesPerSec >= 1024 {
-                    return String(format: "%.1f KB/s", bytesPerSec / 1024)
+            withAnimation(.linear(duration: 0.3)) {
+                self.isTurboBoostEnabled = status.tbEnabled
+                self.cpuTemp = status.cpuTemp != nil ? String(format: "%.1f°C", status.cpuTemp!) : "—"
+                
+                if let fans = status.fanSpeeds, !fans.isEmpty {
+                    self.fanSpeed = fans.map { "\($0)" }.joined(separator: " / ") + " rpm"
                 } else {
-                    return String(format: "%.0f B/s", bytesPerSec)
+                    self.fanSpeed = "—"
                 }
+                
+                self.cpuLoad = String(format: "%.1f%%", status.cpuLoad)
+                self.cpuFrequency = status.cpuFreq > 0 ? String(format: "%.2f GHz", status.cpuFreq) : "2.30 GHz"
+                self.wattage = String(format: "%.1fW", status.wattage)
+                
+                func formatNet(_ bytesPerSec: Double) -> String {
+                    if bytesPerSec >= 1024 * 1024 {
+                        return String(format: "%.1f MB/s", bytesPerSec / (1024 * 1024))
+                    } else if bytesPerSec >= 1024 {
+                        return String(format: "%.1f KB/s", bytesPerSec / 1024)
+                    } else {
+                        return String(format: "%.0f B/s", bytesPerSec)
+                    }
+                }
+                self.netSpeed = "↓\(formatNet(status.netIn)) ↑\(formatNet(status.netOut))"
+                
+                self.currentMode = status.mode
+                self.isTouchBarEnabled = UserDefaults.standard.bool(forKey: "isTouchBarEnabled")
+                self.touchBarItems = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "mode", "temp", "fan", "load", "battery", "freq", "memory", "wattage", "network", "refresh"]
             }
-            self.netSpeed = "↓\(formatNet(status.netIn)) ↑\(formatNet(status.netOut))"
-            
-            self.currentMode = status.mode
-            self.isTouchBarEnabled = UserDefaults.standard.bool(forKey: "isTouchBarEnabled")
-            self.touchBarItems = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "mode", "temp", "fan", "load", "battery", "freq", "memory", "wattage", "network", "refresh"]
         }
     }
     
@@ -126,7 +130,11 @@ class MainWindowViewModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let success = self?.ipcClient.setTurboBoost(enabled: newState) ?? false
             if success {
-                self?.refreshStatus()
+                DispatchQueue.main.async {
+                    withAnimation(.linear(duration: 0.3)) {
+                        self?.isTurboBoostEnabled = newState
+                    }
+                }
             }
         }
     }
@@ -135,7 +143,11 @@ class MainWindowViewModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let success = self?.ipcClient.setMode(mode, config: config) ?? false
             if success {
-                self?.refreshStatus()
+                DispatchQueue.main.async {
+                    withAnimation(.linear(duration: 0.3)) {
+                        self?.currentMode = mode
+                    }
+                }
             }
         }
     }
@@ -186,6 +198,7 @@ struct DashboardView: View {
                     StatCard(title: "CPU Temp", value: viewModel.cpuTemp, icon: "thermometer", color: .orange)
                     StatCard(title: "Fan Speed", value: viewModel.fanSpeed, icon: "fanblades", color: Color(NSColor.systemTeal))
                     StatCard(title: "CPU Load", value: viewModel.cpuLoad, icon: "cpu", color: .purple)
+                    StatCard(title: "Frequency", value: viewModel.cpuFrequency, icon: "speedometer", color: .green)
                     StatCard(title: "Power", value: viewModel.wattage, icon: "bolt.fill", color: .yellow)
                     StatCard(title: "Network", value: viewModel.netSpeed, icon: "network", color: .blue)
                 }
