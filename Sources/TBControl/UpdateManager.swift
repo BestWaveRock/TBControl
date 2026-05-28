@@ -8,6 +8,7 @@ class UpdateManager {
     private let logger = OSLog(subsystem: "com.tbcontrol.app", category: "Update")
     
     var onUpdateAvailable: ((String) -> Void)?
+    var onNoUpdateAvailable: (() -> Void)?
     var onDownloadProgress: ((Double) -> Void)?
     var onUpdateError: ((String) -> Void)?
     
@@ -16,7 +17,9 @@ class UpdateManager {
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
             if let error = error {
                 os_log("Update check error: %@", log: self.logger, type: .error, error.localizedDescription)
                 return
@@ -32,7 +35,9 @@ class UpdateManager {
             let latestVersion = tagName.replacingOccurrences(of: "v", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
             let currentVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0").trimmingCharacters(in: .whitespacesAndNewlines)
             
-            if force || latestVersion.compare(currentVersion, options: .numeric) == .orderedDescending {
+            let comparison = latestVersion.compare(currentVersion, options: .numeric)
+            
+            if comparison == .orderedDescending {
                 os_log("Update available: %@ -> %@", log: self.logger, type: .info, currentVersion, latestVersion)
                 
                 // Find DMG asset
@@ -41,8 +46,16 @@ class UpdateManager {
                     DispatchQueue.main.async {
                         self.onUpdateAvailable?(latestVersion)
                         if force {
-                            self.downloadAndInstall(url: URL(string: downloadUrl)!, version: latestVersion)
+                            // Manual check, but actually we show alert first in MenuBarController
+                            // If force is passed here, it might be internal logic.
                         }
+                    }
+                }
+            } else {
+                os_log("App is up to date (Latest: %@, Current: %@)", log: self.logger, type: .info, latestVersion, currentVersion)
+                if force {
+                    DispatchQueue.main.async {
+                        self.onNoUpdateAvailable?()
                     }
                 }
             }

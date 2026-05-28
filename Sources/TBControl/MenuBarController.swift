@@ -38,17 +38,35 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
     }
     
     private func setupUpdateManager() {
-        UpdateManager.shared.onUpdateAvailable = { [weak self] version in
+        UpdateManager.shared.onUpdateAvailable = { version in
             let alert = NSAlert()
             alert.messageText = "发现新版本: v\(version)"
-            alert.informativeText = "是否立即更新并重启应用？"
+            alert.informativeText = "是否立即下载并更新？应用将在安装后自动重启。"
             alert.addButton(withTitle: "立即更新")
             alert.addButton(withTitle: "稍后再说")
             
             if alert.runModal() == .alertFirstButtonReturn {
-                UpdateManager.shared.checkForUpdates(force: true)
+                // User approved, fetch assets again to get download URL and start install
+                let url = URL(string: "https://api.github.com/repos/BestWaveRock/TBControl/releases/latest")!
+                URLSession.shared.dataTask(with: url) { data, _, _ in
+                    guard let data = data,
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let assets = json["assets"] as? [[String: Any]],
+                          let asset = assets.first(where: { ($0["name"] as? String ?? "").contains(".dmg") }),
+                          let downloadUrl = asset["browser_download_url"] as? String else { return }
+                    UpdateManager.shared.downloadAndInstall(url: URL(string: downloadUrl)!, version: version)
+                }.resume()
             }
         }
+        
+        UpdateManager.shared.onNoUpdateAvailable = {
+            let alert = NSAlert()
+            alert.messageText = "已是最新版本"
+            alert.informativeText = "当前版本已是最新，无需更新。"
+            alert.addButton(withTitle: "确定")
+            alert.runModal()
+        }
+        
         UpdateManager.shared.onUpdateError = { msg in
             let alert = NSAlert()
             alert.messageText = "更新错误"
