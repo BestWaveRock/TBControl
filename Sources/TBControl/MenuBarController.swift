@@ -14,6 +14,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
     private var touchBarController: TouchBarController?
     private var isTouchBarEnabled = false
     private var lastVersionCheck: Date?
+    weak var appDelegate: AppDelegate?
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -61,6 +62,12 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
 
     private func setupMenu() {
         let menu = NSMenu()
+
+        let openMainItem = NSMenuItem(title: "打开主窗口...", action: #selector(openMainWindow), keyEquivalent: "o")
+        openMainItem.target = self
+        menu.addItem(openMainItem)
+
+        menu.addItem(.separator())
 
         let tbStatusItem = NSMenuItem(title: "Turbo Boost 状态: —", action: nil, keyEquivalent: "")
         tbStatusItem.tag = 10
@@ -166,6 +173,10 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         statusItem.menu = menu
         menu.delegate = self
         updateAutoLaunchMenuItem()
+    }
+
+    @objc private func openMainWindow() {
+        appDelegate?.showMainWindow()
     }
 
     // MARK: - NSMenuDelegate

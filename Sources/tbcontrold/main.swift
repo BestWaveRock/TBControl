@@ -291,7 +291,7 @@ Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
 
     if let t = sensors?.cpuTemp, t > 0 {
         let fanStr = sensors?.fanSpeeds?.map { "\($0)" }.joined(separator: "/") ?? "0"
-        os_log("DEBUG: Current Temp: %.1f°C, Fan: %@ rpm, Load: %.1f%%, Plugged: %d", log: logger, type: .debug, t, fanStr, load, battInfo.isPluggedIn ? 1 : 0)
+        os_log("DEBUG: Current Temp: %.1f°C, Fan: %{public}@ rpm, Load: %.1f%%, Plugged: %d", log: logger, type: .debug, t, fanStr, load, battInfo.isPluggedIn ? 1 : 0)
     }
 
     guard autoEngine.mode != .manual else { return }

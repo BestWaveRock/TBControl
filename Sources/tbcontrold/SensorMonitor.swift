@@ -55,8 +55,7 @@ class SensorMonitor {
                 for key in keys {
                     if let speed = readKey(key) {
                         // Sanity check: MacBook fans rarely exceed 15000 RPM
-                        // Ignore 0 as it might be a transient reading error or stopped state we want to fallback from
-                        if speed > 0 && speed < 15000 {
+                        if speed >= 0 && speed < 15000 {
                             currentFanSpeed = Int(speed)
                             break
                         }
@@ -256,7 +255,7 @@ class SensorMonitor {
             let val = (UInt32(data.0) << 24) | (UInt32(data.1) << 16) | (UInt32(data.2) << 8) | UInt32(data.3)
             return Double(val)
         case "flt":
-            let val = (UInt32(data.0) << 24) | (UInt32(data.1) << 16) | (UInt32(data.2) << 8) | UInt32(data.3)
+            let val = (UInt32(data.3) << 24) | (UInt32(data.2) << 16) | (UInt32(data.1) << 8) | UInt32(data.0)
             return Double(Float32(bitPattern: val))
         default:
             return nil
