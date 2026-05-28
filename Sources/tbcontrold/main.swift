@@ -97,6 +97,7 @@ struct GlobalStatus {
     var sensors: SensorData?
     var load: Double = 0
     var battery: Int = -1
+    var isCharging: Bool = false
     var kextLoaded: Bool = false
     var lastUpdate: Date = Date.distantPast
     var wattage: Double?
@@ -169,6 +170,7 @@ func refreshStatus() {
     cachedStatus.sensors = sensors
     cachedStatus.load = load
     cachedStatus.battery = battInfo.level
+    cachedStatus.isCharging = battInfo.isPluggedIn
     cachedStatus.kextLoaded = loaded
     cachedStatus.wattage = wattage
     cachedStatus.lastUpdate = now
@@ -301,6 +303,7 @@ func statusResponse() -> String {
         "mode": autoEngine.mode.rawValue,
         "kext_loaded": status.kextLoaded,
         "battery_level": status.battery,
+        "is_charging": status.isCharging,
         "wattage": status.wattage ?? 0,
         "net_in": status.netInSpeed,
         "net_out": status.netOutSpeed,

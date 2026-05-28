@@ -48,22 +48,8 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     }
     
     private lazy var cpuInfo: (base: Double, max: Double) = {
-        var size = size_t()
-        sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0)
-        var brand = [CChar](repeating: 0, count: size)
-        sysctlbyname("machdep.cpu.brand_string", &brand, &size, nil, 0)
-        let brandString = String(cString: brand)
-        
-        var baseFreq = 2.3 // Fallback
-        if let range = brandString.range(of: #"\d+\.\d+GHz"#, options: .regularExpression) {
-            let freqStr = brandString[range].replacingOccurrences(of: "GHz", with: "")
-            baseFreq = Double(freqStr) ?? 2.3
-        }
-        
-        // Estimate Max Turbo (Base + 1.5 GHz is generic safe estimate)
-        let maxFreq = baseFreq + 1.5
-        
-        return (baseFreq, maxFreq)
+        // Precise values for 16-inch 2019 i9-9880H
+        return (2.3, 4.8)
     }()
     
     override init() {
@@ -156,7 +142,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         return 0.0
     }
 
-    func updateStats(temp: Double?, fanSpeeds: [Int]?, load: Double, tbEnabled: Bool, battery: Int, mode: String, wattage: Double, netIn: Double, netOut: Double, refreshRate: Double) {
+    func updateStats(temp: Double?, fanSpeeds: [Int]?, load: Double, tbEnabled: Bool, battery: Int, mode: String, wattage: Double, netIn: Double, netOut: Double, refreshRate: Double, isCharging: Bool) {
         let tbIcon = tbEnabled ? "🔥" : "🧊"
         let tbText = tbEnabled ? "TB On" : "TB Off"
         
@@ -181,6 +167,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         }
         
         let loadStr = String(format: "%.1f%%", load)
+        let battIcon = isCharging ? "⚡️" : "🔋"
         let battStr = battery >= 0 ? "\(battery)%" : "—"
         
         // Dynamic frequency estimation
@@ -217,7 +204,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             self.tempLabel.stringValue = "🌡 \(tempStr)"
             self.fanLabel.stringValue = "🌀 \(fanStr)"
             self.loadLabel.stringValue = "⚡️ \(loadStr)"
-            self.batteryLabel.stringValue = "🔋 \(battStr)"
+            self.batteryLabel.stringValue = "\(battIcon) \(battStr)"
             self.freqLabel.stringValue = "🚀 \(freqStr)"
             self.memLabel.stringValue = "🧠 \(memStr)"
             self.wattLabel.stringValue = "🔌 \(wattStr)"

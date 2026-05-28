@@ -33,6 +33,28 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         if isTouchBarEnabled {
             setupTouchBar()
         }
+        
+        setupUpdateManager()
+    }
+    
+    private func setupUpdateManager() {
+        UpdateManager.shared.onUpdateAvailable = { [weak self] version in
+            let alert = NSAlert()
+            alert.messageText = "发现新版本: v\(version)"
+            alert.informativeText = "是否立即更新并重启应用？"
+            alert.addButton(withTitle: "立即更新")
+            alert.addButton(withTitle: "稍后再说")
+            
+            if alert.runModal() == .alertFirstButtonReturn {
+                UpdateManager.shared.checkForUpdates(force: true)
+            }
+        }
+        UpdateManager.shared.onUpdateError = { msg in
+            let alert = NSAlert()
+            alert.messageText = "更新错误"
+            alert.informativeText = msg
+            alert.runModal()
+        }
     }
 
     @objc private func autoLaunchChanged() {
@@ -233,6 +255,10 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         menu.addItem(uninstallItem)
 
         menu.addItem(.separator())
+        
+        let checkUpdateItem = NSMenuItem(title: "检查更新...", action: #selector(triggerManualUpdate), keyEquivalent: "u")
+        checkUpdateItem.target = self
+        menu.addItem(checkUpdateItem)
 
         let versionItem = NSMenuItem(title: "版本: \(currentVersion)", action: #selector(openGitHub), keyEquivalent: "")
         versionItem.target = self
@@ -262,46 +288,12 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
     }
 
     private func checkVersion() {
-        guard let url = URL(string: githubRepo) else { return }
-        
-        os_log("Checking for updates at %@", log: logger, type: .debug, githubRepo)
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 10
-        
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self else { return }
-            
-            // Set last check time only after request completes to avoid blocking on instant network failures
-            self.lastVersionCheck = Date()
-            
-            if let error = error {
-                os_log("Version check network error: %@", log: self.logger, type: .error, error.localizedDescription)
-                return
-            }
-            
-            guard let data = data,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let tagName = json["tag_name"] as? String else {
-                os_log("Failed to parse version JSON from GitHub", log: self.logger, type: .error)
-                return
-            }
-            
-            let latest = tagName.replacingOccurrences(of: "v", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let current = self.currentVersion.trimmingCharacters(in: .whitespacesAndNewlines)
-            self.latestVersion = latest
-            
-            os_log("Latest version: %@, Current version: %@", log: self.logger, type: .info, latest, current)
-            
-            DispatchQueue.main.async {
-                if latest.compare(current, options: .numeric) == .orderedDescending {
-                    os_log("New version available: %@", log: self.logger, type: .info, latest)
-                    self.statusItem.menu?.item(withTag: 300)?.title = "⭕ 有新版本: v\(latest)"
-                } else {
-                    os_log("App is up to date", log: self.logger, type: .info)
-                    self.statusItem.menu?.item(withTag: 300)?.title = "版本: \(current)"
-                }
-            }
-        }.resume()
+        UpdateManager.shared.checkForUpdates()
+        lastVersionCheck = Date()
+    }
+
+    @objc private func triggerManualUpdate() {
+        UpdateManager.shared.checkForUpdates(force: true)
     }
 
     @objc private func openGitHub() {
@@ -411,7 +403,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, mode: st.mode, message: nil, daemonRunning: isDaemonRunning)
         
         if isTouchBarEnabled {
-            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode, wattage: st.wattage, netIn: st.netIn, netOut: st.netOut, refreshRate: currentRefreshRate)
+            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode, wattage: st.wattage, netIn: st.netIn, netOut: st.netOut, refreshRate: currentRefreshRate, isCharging: st.isCharging)
         }
     }
 

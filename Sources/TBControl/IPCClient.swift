@@ -18,6 +18,7 @@ class IPCClient {
             cpuLoad: resp["cpu_load"] as? Double ?? 0,
             mode: resp["mode"] as? String ?? "manual",
             batteryLevel: resp["battery_level"] as? Int ?? -1,
+            isCharging: resp["is_charging"] as? Bool ?? false,
             wattage: resp["wattage"] as? Double ?? 0,
             netIn: resp["net_in"] as? Double ?? 0,
             netOut: resp["net_out"] as? Double ?? 0
@@ -100,6 +101,7 @@ struct StatusInfo {
     let cpuLoad: Double
     let mode: String
     let batteryLevel: Int
+    let isCharging: Bool
     let wattage: Double
     let netIn: Double
     let netOut: Double
