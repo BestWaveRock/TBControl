@@ -14,6 +14,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
     private var touchBarController: TouchBarController?
     private var isTouchBarEnabled = false
     private var lastVersionCheck: Date?
+    private var currentRefreshRate: Double = 3.0
     weak var appDelegate: AppDelegate?
 
     override init() {
@@ -82,6 +83,10 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
             }
         }
         
+        controller.onChangeRefresh = { [weak self] in
+            self?.cycleRefreshRate()
+        }
+        
         let touchBar = controller.makeTouchBar()
         
         if #available(macOS 10.12.2, *) {
@@ -90,6 +95,17 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         refresh()
     }
     
+    private func cycleRefreshRate() {
+        let rates: [Double] = [1.0, 2.0, 5.0]
+        if let index = rates.firstIndex(of: currentRefreshRate) {
+            currentRefreshRate = rates[(index + 1) % rates.count]
+        } else {
+            currentRefreshRate = 2.0
+        }
+        _ = ipcClient.setRefreshInterval(currentRefreshRate)
+        startRefresh() // Restart local timer with new rate
+    }
+
     private func removeTouchBar() {
         if let controller = touchBarController, let touchBar = controller.touchBar {
             if #available(macOS 10.12.2, *) {
@@ -328,7 +344,8 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
     }
 
     func startRefresh() {
-        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
+        refreshTimer?.invalidate()
+        let timer = Timer(timeInterval: currentRefreshRate, repeats: true) { [weak self] _ in
             self?.refresh()
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -394,7 +411,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, mode: st.mode, message: nil, daemonRunning: isDaemonRunning)
         
         if isTouchBarEnabled {
-            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode)
+            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode, wattage: st.wattage, netIn: st.netIn, netOut: st.netOut, refreshRate: currentRefreshRate)
         }
     }
 

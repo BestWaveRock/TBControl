@@ -99,9 +99,97 @@ struct GlobalStatus {
     var battery: Int = -1
     var kextLoaded: Bool = false
     var lastUpdate: Date = Date.distantPast
+    var wattage: Double?
+    var netIn: UInt64 = 0
+    var netOut: UInt64 = 0
+    var netInSpeed: Double = 0
+    var netOutSpeed: Double = 0
+    var lastNetUpdate: Date = Date()
 }
 var cachedStatus = GlobalStatus()
 let statusLock = NSLock()
+
+var refreshInterval: TimeInterval = 3.0
+var refreshTimer: Timer?
+
+func setupRefreshTimer(interval: TimeInterval) {
+    refreshTimer?.invalidate()
+    refreshTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+        refreshStatus()
+    }
+}
+
+func getNetworkBytes() -> (in: UInt64, out: UInt64) {
+    var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
+    var len = 0
+    if sysctl(&mib, 6, nil, &len, nil, 0) < 0 { return (0, 0) }
+    var buf = [Int8](repeating: 0, count: len)
+    if sysctl(&mib, 6, &buf, &len, nil, 0) < 0 { return (0, 0) }
+    
+    var totalIn: UInt64 = 0
+    var totalOut: UInt64 = 0
+    var offset = 0
+    while offset < len {
+        let hdr = buf.withUnsafeBufferPointer { ptr -> if_msghdr in
+            return ptr.baseAddress!.advanced(by: offset).withMemoryRebound(to: if_msghdr.self, capacity: 1) { $0.pointee }
+        }
+        if hdr.ifm_type == RTM_IFINFO2 {
+            let if2 = buf.withUnsafeBufferPointer { ptr -> if_msghdr2 in
+                return ptr.baseAddress!.advanced(by: offset).withMemoryRebound(to: if_msghdr2.self, capacity: 1) { $0.pointee }
+            }
+            if if2.ifm_data.ifi_type == 6 || if2.ifm_data.ifi_type == 71 {
+                totalIn += if2.ifm_data.ifi_ibytes
+                totalOut += if2.ifm_data.ifi_obytes
+            }
+        }
+        offset += Int(hdr.ifm_msglen)
+    }
+    return (totalIn, totalOut)
+}
+
+func refreshStatus() {
+    let sensors = sensorMonitor.readSensors()
+    let load = cpuStats.getLoad()
+    let battInfo = currentBatteryStatus()
+    let loaded = kextManager.isLoaded
+    let wattage = sensorMonitor.readWattage()
+    let net = getNetworkBytes()
+    let now = Date()
+
+    statusLock.lock()
+    let duration = now.timeIntervalSince(cachedStatus.lastNetUpdate)
+    if duration > 0 {
+        cachedStatus.netInSpeed = Double(net.in > cachedStatus.netIn ? net.in - cachedStatus.netIn : 0) / duration
+        cachedStatus.netOutSpeed = Double(net.out > cachedStatus.netOut ? net.out - cachedStatus.netOut : 0) / duration
+    }
+    cachedStatus.netIn = net.in
+    cachedStatus.netOut = net.out
+    cachedStatus.lastNetUpdate = now
+    
+    cachedStatus.sensors = sensors
+    cachedStatus.load = load
+    cachedStatus.battery = battInfo.level
+    cachedStatus.kextLoaded = loaded
+    cachedStatus.wattage = wattage
+    cachedStatus.lastUpdate = now
+    statusLock.unlock()
+
+    if let t = sensors?.cpuTemp, t > 0 {
+        let fanStr = sensors?.fanSpeeds?.map { "\($0)" }.joined(separator: "/") ?? "0"
+        os_log("DEBUG: Current Temp: %.1f°C, Fan: %{public}@ rpm, Load: %.1f%%, Watt: %.1fW", log: logger, type: .debug, t, fanStr, load, wattage ?? 0)
+    }
+
+    guard autoEngine.mode != .manual else { return }
+
+    if let action = autoEngine.evaluate(cpuTemp: sensors?.cpuTemp ?? 0, 
+                                         cpuLoad: load,
+                                         fanSpeed: sensors?.fanSpeeds?.max() ?? 0,
+                                         batteryLevel: battInfo.level >= 0 ? battInfo.level : nil,
+                                         isPluggedIn: battInfo.isPluggedIn,
+                                         runningApps: []) {
+        autoEngine.onAction?(action)
+    }
+}
 
 let ipc = DaemonIPC { request, fd in
     handleRequest(request)
@@ -116,6 +204,14 @@ func handleRequest(_ json: String) -> String? {
     switch cmd {
     case "status":
         return statusResponse()
+
+    case "set_refresh":
+        guard let interval = req["interval"] as? Double else {
+            return errorResponse("missing 'interval'")
+        }
+        refreshInterval = interval
+        setupRefreshTimer(interval: interval)
+        return jsonResponse(["success": true])
 
     case "set_tb":
         guard let enabled = req["enabled"] as? Bool else {
@@ -205,6 +301,9 @@ func statusResponse() -> String {
         "mode": autoEngine.mode.rawValue,
         "kext_loaded": status.kextLoaded,
         "battery_level": status.battery,
+        "wattage": status.wattage ?? 0,
+        "net_in": status.netInSpeed,
+        "net_out": status.netOutSpeed,
         "is_daemon": true
     ]
 
@@ -275,35 +374,6 @@ autoEngine.onAction = { shouldEnable in
     currentTBState = shouldEnable
 }
 
-Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
-    let sensors = sensorMonitor.readSensors()
-    let load = cpuStats.getLoad()
-    let battInfo = currentBatteryStatus()
-    let loaded = kextManager.isLoaded
-
-    statusLock.lock()
-    cachedStatus.sensors = sensors
-    cachedStatus.load = load
-    cachedStatus.battery = battInfo.level
-    cachedStatus.kextLoaded = loaded
-    cachedStatus.lastUpdate = Date()
-    statusLock.unlock()
-
-    if let t = sensors?.cpuTemp, t > 0 {
-        let fanStr = sensors?.fanSpeeds?.map { "\($0)" }.joined(separator: "/") ?? "0"
-        os_log("DEBUG: Current Temp: %.1f°C, Fan: %{public}@ rpm, Load: %.1f%%, Plugged: %d", log: logger, type: .debug, t, fanStr, load, battInfo.isPluggedIn ? 1 : 0)
-    }
-
-    guard autoEngine.mode != .manual else { return }
-
-    if let action = autoEngine.evaluate(cpuTemp: sensors?.cpuTemp ?? 0, 
-                                         cpuLoad: load,
-                                         fanSpeed: sensors?.fanSpeeds?.max() ?? 0,
-                                         batteryLevel: battInfo.level >= 0 ? battInfo.level : nil,
-                                         isPluggedIn: battInfo.isPluggedIn,
-                                         runningApps: []) {
-        autoEngine.onAction?(action)
-    }
-}
+setupRefreshTimer(interval: refreshInterval)
 
 RunLoop.main.run()

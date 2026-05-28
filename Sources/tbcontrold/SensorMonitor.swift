@@ -279,6 +279,23 @@ class SensorMonitor {
         ]
         return String(bytes.compactMap { UnicodeScalar($0).isASCII ? Character(UnicodeScalar($0)) : nil })
     }
+
+    func readWattage() -> Double? {
+        let matching = IOServiceMatching("AppleSmartBattery")
+        let service = IOServiceGetMatchingService(0, matching)
+        if service != 0 {
+            var props: Unmanaged<CFMutableDictionary>?
+            if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+               let dict = props?.takeRetainedValue() as? [String: Any] {
+                let voltage = (dict["Voltage"] as? Double ?? 0) / 1000.0
+                let amperage = (dict["Amperage"] as? Double ?? 0) / 1000.0
+                IOObjectRelease(service)
+                return abs(voltage * amperage)
+            }
+            IOObjectRelease(service)
+        }
+        return nil
+    }
 }
 
 // exelban/stats aligned 80-byte SMCParamStruct

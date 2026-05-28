@@ -11,17 +11,21 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     // Labels/Buttons for Touch Bar items
     private var tbStateButton: NSButton?
     private var modeButton: NSButton?
+    private var refreshButton: NSButton?
     private let tempLabel = createLabel()
     private let fanLabel = createLabel()
     private let loadLabel = createLabel()
     private let batteryLabel = createLabel()
     private let freqLabel = createLabel()
     private let memLabel = createLabel()
+    private let wattLabel = createLabel()
+    private let netLabel = createLabel()
     private var statsButton: NSButton?
     
     // Callbacks for interactions
     var onToggleTurbo: (() -> Void)?
     var onToggleMode: (() -> Void)?
+    var onChangeRefresh: (() -> Void)?
     
     private static func createLabel() -> NSTextField {
         let label = NSTextField(labelWithString: "")
@@ -56,9 +60,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             baseFreq = Double(freqStr) ?? 2.3
         }
         
-        // Estimate Max Turbo (Base + 1.0~2.5 GHz depending on model)
-        // For i9-9880H it's 4.8GHz, for i7-9750H it's 4.5GHz. 
-        // A generic Base + 1.5 is a safe visible estimate for UI.
+        // Estimate Max Turbo (Base + 1.5 GHz is generic safe estimate)
         let maxFreq = baseFreq + 1.5
         
         return (baseFreq, maxFreq)
@@ -68,13 +70,14 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         super.init()
         self.tbStateButton = TouchBarController.createButton(target: self, action: #selector(toggleTurbo))
         self.modeButton = TouchBarController.createButton(target: self, action: #selector(toggleMode))
+        self.refreshButton = TouchBarController.createButton(target: self, action: #selector(toggleRefresh))
     }
     
     func makeTouchBar() -> NSTouchBar {
         let touchBar = NSTouchBar()
         touchBar.delegate = self
         
-        let configuredItems = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "mode", "temp", "fan", "load", "battery", "freq"]
+        let configuredItems = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "mode", "temp", "fan", "load", "battery", "freq", "memory", "wattage", "network", "refresh"]
         var identifiers: [NSTouchBarItem.Identifier] = [.statsItem]
         
         for key in configuredItems {
@@ -88,6 +91,9 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             case "battery": identifiers.append(.batteryItem)
             case "freq": identifiers.append(.freqItem)
             case "memory": identifiers.append(.memItem)
+            case "wattage": identifiers.append(.wattItem)
+            case "network": identifiers.append(.netItem)
+            case "refresh": identifiers.append(.refreshItem)
             default: break
             }
         }
@@ -113,6 +119,10 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
     
     @objc private func toggleMode() {
         onToggleMode?()
+    }
+    
+    @objc private func toggleRefresh() {
+        onChangeRefresh?()
     }
     
     @objc private func toggleFullBar() {
@@ -146,7 +156,7 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         return 0.0
     }
 
-    func updateStats(temp: Double?, fanSpeeds: [Int]?, load: Double, tbEnabled: Bool, battery: Int, mode: String) {
+    func updateStats(temp: Double?, fanSpeeds: [Int]?, load: Double, tbEnabled: Bool, battery: Int, mode: String, wattage: Double, netIn: Double, netOut: Double, refreshRate: Double) {
         let tbIcon = tbEnabled ? "🔥" : "🧊"
         let tbText = tbEnabled ? "TB On" : "TB Off"
         
@@ -178,28 +188,40 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         let max = cpuInfo.max
         let currentFreq: Double
         if tbEnabled {
-            // Estimate based on load: base + (max - base) * (load/100)
-            // Minimum at low load should still be around base or slightly lower
             let boost = (max - base) * (load / 100.0)
             currentFreq = base + boost
         } else {
-            // Capped at base. SpeedStep/EIST can still drop it down.
-            // Estimate: base * (0.8 + 0.2 * load/100)
             currentFreq = base * (0.8 + 0.2 * (load / 100.0))
         }
         let freqStr = String(format: "%.2f GHz", currentFreq)
         
         let memStr = String(format: "%.1f%%", getMemoryUsage())
+        let wattStr = String(format: "%.1fW", wattage)
+        
+        func formatNet(_ bytesPerSec: Double) -> String {
+            if bytesPerSec >= 1024 * 1024 {
+                return String(format: "%.1fM", bytesPerSec / (1024 * 1024))
+            } else if bytesPerSec >= 1024 {
+                return String(format: "%.1fK", bytesPerSec / 1024)
+            } else {
+                return String(format: "%.0fB", bytesPerSec)
+            }
+        }
+        let netStr = "↓\(formatNet(netIn)) ↑\(formatNet(netOut))"
+        let refreshStr = "⏱ \(Int(refreshRate))s"
         
         DispatchQueue.main.async {
             self.tbStateButton?.title = "\(tbIcon) \(tbText)"
             self.modeButton?.title = "\(modeIcon) \(modeText)"
+            self.refreshButton?.title = refreshStr
             self.tempLabel.stringValue = "🌡 \(tempStr)"
             self.fanLabel.stringValue = "🌀 \(fanStr)"
             self.loadLabel.stringValue = "⚡️ \(loadStr)"
             self.batteryLabel.stringValue = "🔋 \(battStr)"
             self.freqLabel.stringValue = "🚀 \(freqStr)"
             self.memLabel.stringValue = "🧠 \(memStr)"
+            self.wattLabel.stringValue = "🔌 \(wattStr)"
+            self.netLabel.stringValue = "🌐 \(netStr)"
             
             // Force labels to recalculate their size
             self.tempLabel.sizeToFit()
@@ -208,11 +230,13 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             self.batteryLabel.sizeToFit()
             self.freqLabel.sizeToFit()
             self.memLabel.sizeToFit()
+            self.wattLabel.sizeToFit()
+            self.netLabel.sizeToFit()
             self.tbStateButton?.sizeToFit()
             self.modeButton?.sizeToFit()
+            self.refreshButton?.sizeToFit()
             
-            // Update Control Strip button title to show temperature residentially
-            // Use mode icon + temp for more density
+            // Update Control Strip button title
             self.statsButton?.title = "\(modeIcon)\(tbIcon) \(tempStr)"
             self.statsButton?.sizeToFit()
         }
@@ -234,6 +258,10 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         case .modeItem:
             let item = NSCustomTouchBarItem(identifier: identifier)
             item.view = modeButton ?? NSView()
+            return item
+        case .refreshItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            item.view = refreshButton ?? NSView()
             return item
         case .tempItem:
             let item = NSCustomTouchBarItem(identifier: identifier)
@@ -259,6 +287,14 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
             let item = NSCustomTouchBarItem(identifier: identifier)
             item.view = memLabel
             return item
+        case .wattItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            item.view = wattLabel
+            return item
+        case .netItem:
+            let item = NSCustomTouchBarItem(identifier: identifier)
+            item.view = netLabel
+            return item
         default:
             return nil
         }
@@ -269,10 +305,13 @@ extension NSTouchBarItem.Identifier {
     static let statsItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.stats")
     static let tbStateItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.tbState")
     static let modeItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.mode")
+    static let refreshItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.refresh")
     static let tempItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.temp")
     static let fanItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.fan")
     static let loadItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.load")
     static let batteryItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.battery")
     static let freqItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.freq")
     static let memItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.memory")
+    static let wattItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.wattage")
+    static let netItem = NSTouchBarItem.Identifier("com.tbcontrol.touchbar.network")
 }

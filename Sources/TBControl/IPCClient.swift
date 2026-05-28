@@ -17,7 +17,10 @@ class IPCClient {
             fanSpeeds: resp["fan_speeds"] as? [Int],
             cpuLoad: resp["cpu_load"] as? Double ?? 0,
             mode: resp["mode"] as? String ?? "manual",
-            batteryLevel: resp["battery_level"] as? Int ?? -1
+            batteryLevel: resp["battery_level"] as? Int ?? -1,
+            wattage: resp["wattage"] as? Double ?? 0,
+            netIn: resp["net_in"] as? Double ?? 0,
+            netOut: resp["net_out"] as? Double ?? 0
         )
     }
 
@@ -31,6 +34,12 @@ class IPCClient {
         var cmd: [String: Any] = ["cmd": "set_mode", "mode": mode]
         if !config.isEmpty { cmd["config"] = config }
         guard let resp = sendCommand(cmd), let success = resp["success"] as? Bool else { return false }
+        return success
+    }
+
+    func setRefreshInterval(_ interval: Double) -> Bool {
+        guard let resp = sendCommand(["cmd": "set_refresh", "interval": interval]),
+              let success = resp["success"] as? Bool else { return false }
         return success
     }
 
@@ -91,4 +100,7 @@ struct StatusInfo {
     let cpuLoad: Double
     let mode: String
     let batteryLevel: Int
+    let wattage: Double
+    let netIn: Double
+    let netOut: Double
 }
