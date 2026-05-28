@@ -78,11 +78,18 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         }
     }
 
-    func updateStats(temp: Double?, fan: Int?, load: Double, tbEnabled: Bool, battery: Int) {
+    func updateStats(temp: Double?, fanSpeeds: [Int]?, load: Double, tbEnabled: Bool, battery: Int) {
         let tbIcon = tbEnabled ? "🔥" : "🧊"
         let tbText = tbEnabled ? "On" : "Off"
         let tempStr = temp != nil ? String(format: "%.0f°C", temp!) : "—"
-        let fanStr = fan != nil ? "\(fan!) rpm" : "—"
+        
+        let fanStr: String
+        if let fans = fanSpeeds, !fans.isEmpty {
+            fanStr = fans.map { "\($0)" }.joined(separator: "/") + " rpm"
+        } else {
+            fanStr = "—"
+        }
+        
         let loadStr = String(format: "%.1f%%", load)
         let battStr = battery >= 0 ? "\(battery)%" : "—"
         let freqStr = tbEnabled ? "> \(baseFrequency)" : baseFrequency

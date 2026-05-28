@@ -311,7 +311,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         let isDaemonRunning = checkDaemonRunning()
         
         guard let st = ipcClient.getStatus() else {
-            updateMenuItems(tbState: nil, temp: nil, fan: nil, load: nil, mode: nil, message: nil, daemonRunning: isDaemonRunning)
+            updateMenuItems(tbState: nil, temp: nil, fanSpeeds: nil, load: nil, mode: nil, message: nil, daemonRunning: isDaemonRunning)
             return
         }
         
@@ -323,10 +323,10 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         lastNotifiedState = st.tbEnabled
         
         status = st
-        updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fan: st.fanSpeed, load: st.cpuLoad, mode: st.mode, message: nil, daemonRunning: isDaemonRunning)
+        updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, mode: st.mode, message: nil, daemonRunning: isDaemonRunning)
         
         if isTouchBarEnabled {
-            touchBarController?.updateStats(temp: st.cpuTemp, fan: st.fanSpeed, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel)
+            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel)
         }
     }
 
@@ -375,7 +375,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         return false
     }
 
-    private func updateMenuItems(tbState: Bool?, temp: Double?, fan: Int?, load: Double?, mode: String?, message: String?, daemonRunning: Bool) {
+    private func updateMenuItems(tbState: Bool?, temp: Double?, fanSpeeds: [Int]?, load: Double?, mode: String?, message: String?, daemonRunning: Bool) {
         guard let menu = statusItem.menu else { return }
 
         // Update Daemon Status Items
@@ -396,8 +396,9 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
             menu.item(withTag: 11)?.title = "🌡 CPU 温度: —"
         }
 
-        if let f = fan {
-            menu.item(withTag: 12)?.title = "🌀 风扇: \(f) rpm"
+        if let fans = fanSpeeds, !fans.isEmpty {
+            let fanStr = fans.map { "\($0)" }.joined(separator: " / ")
+            menu.item(withTag: 12)?.title = "🌀 风扇: \(fanStr) rpm"
         } else {
             menu.item(withTag: 12)?.title = "🌀 风扇: —"
         }
@@ -447,7 +448,8 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
             let icon = tbState == false ? "🧊" : (tbState == nil ? "⏳" : "🔥")
             statusItemButton.title = icon
             if let t = temp {
-                statusItemButton.toolTip = String(format: "%.1f°C | %d rpm", t, fan ?? 0)
+                let fanStr = fanSpeeds?.map { "\($0)" }.joined(separator: "/") ?? "0"
+                statusItemButton.toolTip = String(format: "%.1f°C | %@ rpm", t, fanStr)
             } else {
                 statusItemButton.toolTip = tbState == nil ? "未连接" : ""
             }
@@ -474,7 +476,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
                     self.refresh()
                     NSSound(named: "Tink")?.play()
                 } else {
-                    self.updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fan: st.fanSpeed, load: st.cpuLoad, mode: st.mode, message: errorMsg, daemonRunning: self.checkDaemonRunning())
+                    self.updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, mode: st.mode, message: errorMsg, daemonRunning: self.checkDaemonRunning())
                     DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
                         self?.refresh()
                     }

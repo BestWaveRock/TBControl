@@ -14,7 +14,7 @@ struct AutoConfig: Codable {
     var batteryThreshold: Int = 30
     var loadThreshold: Double = 75.0
     var loadDurationSeconds: Int = 10
-    var fanThreshold: Int = 4600
+    var fanThreshold: Int = 4500
     var monitorApps: [String] = []
 }
 

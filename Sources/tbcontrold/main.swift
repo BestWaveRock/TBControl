@@ -211,8 +211,11 @@ func statusResponse() -> String {
     if let temp = status.sensors?.cpuTemp {
         response["cpu_temp"] = temp
     }
-    if let fan = status.sensors?.fanSpeed {
-        response["fan_speed"] = fan
+    if let fans = status.sensors?.fanSpeeds {
+        response["fan_speeds"] = fans
+        if !fans.isEmpty {
+            response["fan_speed"] = fans.max() ?? 0
+        }
     }
 
     return jsonResponse(response)
@@ -287,14 +290,15 @@ Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
     statusLock.unlock()
 
     if let t = sensors?.cpuTemp, t > 0 {
-        os_log("DEBUG: Current Temp: %.1f°C, Fan: %d rpm, Load: %.1f%%, Plugged: %d", log: logger, type: .debug, t, sensors?.fanSpeed ?? 0, load, battInfo.isPluggedIn ? 1 : 0)
+        let fanStr = sensors?.fanSpeeds?.map { "\($0)" }.joined(separator: "/") ?? "0"
+        os_log("DEBUG: Current Temp: %.1f°C, Fan: %@ rpm, Load: %.1f%%, Plugged: %d", log: logger, type: .debug, t, fanStr, load, battInfo.isPluggedIn ? 1 : 0)
     }
 
     guard autoEngine.mode != .manual else { return }
 
     if let action = autoEngine.evaluate(cpuTemp: sensors?.cpuTemp ?? 0, 
                                          cpuLoad: load,
-                                         fanSpeed: sensors?.fanSpeed ?? 0,
+                                         fanSpeed: sensors?.fanSpeeds?.max() ?? 0,
                                          batteryLevel: battInfo.level >= 0 ? battInfo.level : nil,
                                          isPluggedIn: battInfo.isPluggedIn,
                                          runningApps: []) {

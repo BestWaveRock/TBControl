@@ -3,7 +3,7 @@ import IOKit
 
 struct SensorData {
     let cpuTemp: Double?
-    let fanSpeed: Int?
+    let fanSpeeds: [Int]?
 }
 
 class SensorMonitor {
@@ -43,12 +43,13 @@ class SensorMonitor {
         }
 
         // Fan Speed - Try multiple fans and keys
-        var maxFanSpeed: Int? = nil
+        var fanSpeeds: [Int] = []
         let fanCountVal = readKey("FNum") ?? 0
         let fanCount = Int(fanCountVal)
         
         if fanCount > 0 && fanCount < 10 {
             for i in 0..<fanCount {
+                var currentFanSpeed: Int? = nil
                 // Try multiple keys for current fan
                 let keys = ["F\(i)Ac", "F\(i)Rn", "F\(i)Sp"]
                 for key in keys {
@@ -56,27 +57,33 @@ class SensorMonitor {
                         // Sanity check: MacBook fans rarely exceed 15000 RPM
                         // Ignore 0 as it might be a transient reading error or stopped state we want to fallback from
                         if speed > 0 && speed < 15000 {
-                            maxFanSpeed = max(maxFanSpeed ?? 0, Int(speed))
+                            currentFanSpeed = Int(speed)
                             break
                         }
                     }
+                }
+                if let speed = currentFanSpeed {
+                    fanSpeeds.append(speed)
+                } else {
+                    fanSpeeds.append(0)
                 }
             }
         }
         
         // If we still have nil or 0, try a more aggressive fallback
-        if (maxFanSpeed ?? 0) == 0 {
+        if fanSpeeds.isEmpty || fanSpeeds.allSatisfy({ $0 == 0 }) {
+            fanSpeeds = []
             let fallbackKeys = ["F0Ac", "F1Ac", "F2Ac", "F0Rn", "F1Rn", "F2Rn", "F0Sp", "F1Sp"]
             for key in fallbackKeys {
                 if let speed = readKey(key) {
                     if speed > 0 && speed < 15000 {
-                        maxFanSpeed = max(maxFanSpeed ?? 0, Int(speed))
+                        fanSpeeds.append(Int(speed))
                     }
                 }
             }
         }
 
-        return SensorData(cpuTemp: finalTemp, fanSpeed: maxFanSpeed)
+        return SensorData(cpuTemp: finalTemp, fanSpeeds: fanSpeeds.isEmpty ? nil : fanSpeeds)
     }
 
     func setFanMode(id: Int, isManual: Bool) -> Bool {
