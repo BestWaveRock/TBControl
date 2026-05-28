@@ -163,28 +163,38 @@ class SensorMonitor {
     }
 
     func readCPUFrequency() -> Double? {
-        // Use X86PlatformPlugin P-States and P-Limit logic
-        let service = IOServiceGetMatchingService(0, IOServiceMatching("X86PlatformPlugin"))
-        guard service != 0 else { return nil }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/powermetrics")
+        // Use a very short sample interval for responsiveness
+        task.arguments = ["-n", "1", "-i", "100", "--samplers", "cpu_power"]
         
-        var freq: Double? = nil
-        var props: Unmanaged<CFMutableDictionary>?
-        if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
-           let dict = props?.takeRetainedValue() as? [String: Any] {
+        let out = Pipe()
+        task.standardOutput = out
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            guard let output = String(data: data, encoding: .utf8) else { return nil }
             
-            if let diag = dict["IOPPFDiagDict"] as? [String: Any],
-               let limit = diag["CPUPLimitDict"] as? [String: Any],
-               let limitIdx = limit["currentLimit"] as? Int,
-               let pstates = dict["CPUPStates"] as? [[String: Any]],
-               limitIdx < pstates.count {
-                
-                if let freqMHz = pstates[limitIdx]["Frequency"] as? Double {
-                    freq = freqMHz / 1000.0
+            // Extract all occurrences of "(XXXX.XX Mhz)" and take the maximum
+            // This captures per-core frequencies
+            let pattern = #"\((\d+\.\d+) Mhz\)"#
+            let regex = try NSRegularExpression(pattern: pattern)
+            let nsRange = NSRange(output.startIndex..<output.endIndex, in: output)
+            let matches = regex.matches(in: output, range: nsRange)
+            
+            var maxMhz = 0.0
+            for match in matches {
+                if let range = Range(match.range(at: 1), in: output),
+                   let mhz = Double(output[range]) {
+                    if mhz > maxMhz { maxMhz = mhz }
                 }
             }
+            return maxMhz > 0 ? maxMhz / 1000.0 : nil
+        } catch {
+            return nil
         }
-        IOObjectRelease(service)
-        return freq
     }
 
     private func writeKey(_ key: String, bytes: [UInt8], size: UInt32) -> Bool {
