@@ -66,6 +66,22 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         
         let controller = TouchBarController()
         self.touchBarController = controller
+        
+        controller.onToggleTurbo = { [weak self] in
+            self?.toggleTurboBoost()
+        }
+        
+        controller.onToggleMode = { [weak self] in
+            guard let self = self, let currentMode = self.status?.mode else { return }
+            let modes = ["manual", "auto_temp", "auto_battery", "auto_load", "auto_fan"]
+            if let index = modes.firstIndex(of: currentMode) {
+                let nextIndex = (index + 1) % modes.count
+                let nextMode = modes[nextIndex]
+                _ = self.ipcClient.setMode(nextMode)
+                self.refresh()
+            }
+        }
+        
         let touchBar = controller.makeTouchBar()
         
         if #available(macOS 10.12.2, *) {
@@ -378,7 +394,7 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
         updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, mode: st.mode, message: nil, daemonRunning: isDaemonRunning)
         
         if isTouchBarEnabled {
-            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel)
+            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode)
         }
     }
 
