@@ -14,7 +14,9 @@ struct AutoConfig: Codable {
     var batteryThreshold: Int = 30
     var loadThreshold: Double = 75.0
     var loadDurationSeconds: Int = 10
-    var fanThreshold: Int = 4500
+    var fanHighThreshold: Int = 5500
+    var fanLowThreshold: Int = 4000
+    var fanLowDurationSeconds: Int = 10
     var monitorApps: [String] = []
 }
 
@@ -50,15 +52,18 @@ class AutoModeEngine {
 
     private var lastAction: Bool? = nil
     private var highLoadStartTime: Date? = nil
+    private var lowFanStartTime: Date? = nil
 
     func evaluate(cpuTemp: Double, cpuLoad: Double, fanSpeed: Int, batteryLevel: Int?, isPluggedIn: Bool, runningApps: [String]) -> Bool? {
         switch mode {
         case .manual:
             highLoadStartTime = nil
+            lowFanStartTime = nil
             return nil
 
         case .autoTemp:
             highLoadStartTime = nil
+            lowFanStartTime = nil
             guard cpuTemp > 0 else { return nil }
             if let last = lastAction {
                 if last == false && cpuTemp < (config.tempThreshold - config.tempHysteresis) {
@@ -81,6 +86,7 @@ class AutoModeEngine {
 
         case .autoBattery:
             highLoadStartTime = nil
+            lowFanStartTime = nil
             if isPluggedIn {
                 if lastAction != true {
                     lastAction = true
@@ -97,6 +103,7 @@ class AutoModeEngine {
             return nil
 
         case .autoLoad:
+            lowFanStartTime = nil
             if cpuLoad >= config.loadThreshold {
                 if highLoadStartTime == nil {
                     highLoadStartTime = Date()
@@ -117,10 +124,28 @@ class AutoModeEngine {
             
         case .autoFan:
             highLoadStartTime = nil
-            let shouldDisable = fanSpeed >= config.fanThreshold
-            if lastAction != !shouldDisable {
-                lastAction = !shouldDisable
-                return !shouldDisable
+            // Disable Turbo Boost when fan speed > 5500 RPM
+            if fanSpeed > config.fanHighThreshold {
+                lowFanStartTime = nil
+                if lastAction != false {
+                    lastAction = false
+                    return false
+                }
+            }
+            // Enable Turbo Boost when fan speed < 4000 RPM for 10 seconds
+            else if fanSpeed < config.fanLowThreshold {
+                if lowFanStartTime == nil {
+                    lowFanStartTime = Date()
+                } else if let startTime = lowFanStartTime, Date().timeIntervalSince(startTime) >= Double(config.fanLowDurationSeconds) {
+                    if lastAction != true {
+                        lastAction = true
+                        lowFanStartTime = nil
+                        return true
+                    }
+                }
+            } else {
+                // Fan speed in normal range, reset the timer
+                lowFanStartTime = nil
             }
             return nil
         }
