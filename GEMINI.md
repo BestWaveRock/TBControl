@@ -10,7 +10,7 @@
   - 加载/卸载 Kext。
   - 通过 SMC 读取 CPU 温度和风扇转速（支持双风扇取最高值）。
   - 支持手动控制风扇模式与转速（集成 Fan Helper 功能）。
-  - 维护自动模式逻辑（温度、负载、电池、风扇阈值降至 4600 RPM）。
+  - 维护自动模式逻辑（温度、负载、电池、风扇智能双阈值）。
   - 提供 Unix Socket IPC 服务 (`/tmp/tbcontrol.sock`)。
   - 支持的新指令：`set_fan_speed` (设置转速), `reset_fans` (恢复自动)。
   - 持久化配置 (`/Library/Application Support/TBControl/settings.json`)。
@@ -22,13 +22,32 @@
 
 ## 2. 关键技术细节
 
+### 自动(风扇) 模式逻辑
+
+**优先级策略**：优先通过 CPU 频率控制热量（即降低睿频），避免盲目依赖风扇。
+
+**双阈值设计**：
+- **高阈值 (fanHighThreshold)**: 5500 RPM
+  - 当风扇转速 **> 5500 RPM** 时，立即禁用 Turbo Boost
+  - 作用：快速响应过热信号，通过降低 CPU 频率来缓解热压力
+  
+- **低阈值 (fanLowThreshold)**: 4000 RPM
+  - 当风扇转速持续 **< 4000 RPM 达 10 秒** 时，启用 Turbo Boost
+  - 作用：确认系统散热充分，安全地重新启用高性能模式
+  - 使用持续时间 (fanLowDurationSeconds: 10) 防止频繁切换
+
+**状态管理**：
+- 使用 `lowFanStartTime` 计时器跟踪持续低转速的时长
+- 当转速回升至 4000-5500 RPM 范围时，重置计时器
+- 仅在满足持续 10 秒低转速条件后才启用睿频
+
 - **IPC 协议**: 使用基于 Unix Socket 的 JSON 文本协议。所有指令需以 `\n` 结尾。
 - **SMC 读取**: 
   - 参考 `Stats` 开源项目优化了数据解析逻辑。
   - 支持通用 `spxx` 固定小数点类型解析。
   - 自动识别并显示 0 RPM（风扇停止状态）。
 - **Touch Bar**: 
-  - 采用 **System Modal** 机制实现跨应用常驻显示。使用私有 API `presentSystemModalTouchBar:placement:systemTrayItemIdentifier:` (注意: 部分 macOS 版本中为 `presentSystemModalFunctionBar...`) 并设置 `placement: 1` (System 级别) 以获得最高显示优先级。
+  - 采用 **System Modal** 机制实现跨应用常驻显示。使用私有 API `presentSystemModalTouchBar:placement:systemTrayItemIdentifier:`。
   - 调用 `NSTouchBarItem.addSystemTrayItem:` 将监控图标显式添加到 Control Strip。
   - 调用私有函数 `DFRElementSetControlStripPresenceForIdentifier` 确保图标在 Control Strip 中常驻。
   - **重要**: 调用私有 C/ObjC API 时，必须显式将 Swift 类型桥接为 Objective-C 对象（如 `NSString`），直接传递 Swift 结构体或 String 会导致 `SIGSEGV` 崩溃。
@@ -59,12 +78,12 @@
    - 自动在 GitHub 上创建 Release 并上传附件。
 
 ### 安装与卸载
-- **安装**: 建议通过 App 内的“安装守护进程”或 `sudo ./Scripts/install.sh`。
-- **卸载**: 使用 App 菜单中的“彻底卸载组件”或 `sudo ./Scripts/uninstall.sh`。
+- **安装**: 建议通过 App 内的"安装守护进程"或 `sudo ./Scripts/install.sh`。
+- **卸载**: 使用 App 菜单中的"彻底卸载组件"或 `sudo ./Scripts/uninstall.sh`。
 
 ## 4. 常见问题排查
-- **状态栏显示 ⚠️**: 通常是 Kext 未被系统允许加载。需前往“系统设置 > 隐私与安全性”允许。
+- **状态栏显示 ⚠️**: 通常是 Kext 未被系统允许加载。需前往"系统设置 > 隐私与安全性"允许。
 - **Touch Bar 空白**: 
-  - 确保系统设置中的 Touch Bar 显示模式包含“App 控件”。
+  - 确保系统设置中的 Touch Bar 显示模式包含"App 控件"。
   - 代码层面：更新文本后必须调用 `sizeToFit()` 以重新计算组件尺寸，否则会被系统识别为 0x0 而不显示。
 - **转速异常**: 硬件读取偶发脏数据，代码中已增加 15000 RPM 的阈值过滤。
