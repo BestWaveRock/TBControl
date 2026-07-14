@@ -1,8 +1,10 @@
 # TBControl - macOS Turbo Boost 控制工具
 
-TBControl 是一款专为 Intel 架构 Mac 设计的轻量级睿频（Turbo Boost）控制工具。它通过内核扩展（Kext）实现对 CPU 睿频状态的底层控制，并提供多种智能自动化模式。
-
 ![App Icon](Resources/AppIcon.icns)
+
+![Screenshot](Resources/Screenshot.png)
+
+TBControl 是一款专为 Intel 架构 Mac 设计的轻量级睿频（Turbo Boost）控制工具。它通过内核扩展（Kext）实现对 CPU 睿频状态的底层控制，并提供多种智能自动化模式。
 
 ## 主要功能
 
