@@ -1,58 +1,84 @@
 import SwiftUI
+import Charts
 
-struct VisualEffectBlur: NSViewRepresentable {
-    var material: NSVisualEffectView.Material
-    var blendingMode: NSVisualEffectView.BlendingMode
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let visualEffectView = NSVisualEffectView()
-        visualEffectView.material = material
-        visualEffectView.blendingMode = blendingMode
-        visualEffectView.state = .active
-        return visualEffectView
-    }
-
-    func updateNSView(_ visualEffectView: NSVisualEffectView, context: Context) {
-        visualEffectView.material = material
-        visualEffectView.blendingMode = blendingMode
-    }
-}
+// MARK: - Window Root
 
 struct MainWindowView: View {
     @ObservedObject var viewModel: MainWindowViewModel
+    @State private var selectedTab: Tab = .dashboard
+
+    enum Tab: String, CaseIterable, Identifiable {
+        case dashboard = "Dashboard"
+        case settings = "Settings"
+        case touchbar = "Touch Bar"
+        case about = "About"
+
+        var id: String { rawValue }
+
+        var icon: String {
+            switch self {
+            case .dashboard: return "gauge.with.dots.needle.33percent"
+            case .settings: return "gearshape.2"
+            case .touchbar: return "keyboard.trianglebadge.exclamationmark"
+            case .about: return "info.bubble"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .dashboard: return .cyan
+            case .settings: return .indigo
+            case .touchbar: return .orange
+            case .about: return .secondary
+            }
+        }
+    }
 
     var body: some View {
-        ZStack {
-            VisualEffectBlur(material: .sidebar, blendingMode: .behindWindow)
-                .ignoresSafeArea()
-            
-            TabView {
-                DashboardView(viewModel: viewModel)
-                    .tabItem {
-                        Label("Dashboard", systemImage: "gauge")
-                    }
-
-                SettingsView(viewModel: viewModel)
-                    .tabItem {
-                        Label("Settings", systemImage: "gear")
-                    }
-                    
-                TouchBarConfigView(viewModel: viewModel)
-                    .tabItem {
-                        Label("Touch Bar", systemImage: "macbook.and.ipad")
-                    }
-
-                AboutView()
-                    .tabItem {
-                        Label("About", systemImage: "info.circle")
-                    }
-            }
-            .padding()
-            .animation(.linear(duration: 0.3), value: viewModel.currentMode)
+        NavigationSplitView {
+            sidebar
+                .navigationSplitViewColumnWidth(min: 180, ideal: 200)
+        } detail: {
+            detailView(for: selectedTab)
         }
-        .frame(minWidth: 550, minHeight: 450)
+        .frame(minWidth: 680, minHeight: 520)
+    }
+
+    // MARK: - Sidebar
+
+    private var sidebar: some View {
+        List(Tab.allCases, selection: $selectedTab) { tab in
+            NavigationLink(value: tab) {
+                Label(tab.rawValue, systemImage: tab.icon)
+                    .symbolRenderingMode(.multicolor)
+                    .font(.system(size: 13))
+                    .padding(.vertical, 4)
+            }
+            .listRowSeparator(.hidden)
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(.ultraThinMaterial)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("TBControl")
+                    .font(.system(size: 15, weight: .bold))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func detailView(for tab: Tab) -> some View {
+        switch tab {
+        case .dashboard: DashboardView(viewModel: viewModel)
+        case .settings: SettingsView(viewModel: viewModel)
+        case .touchbar: TouchBarConfigView(viewModel: viewModel)
+        case .about: AboutView()
+        }
     }
 }
+
+// MARK: - ViewModel
 
 class MainWindowViewModel: ObservableObject {
     @Published var cpuTemp: String = "—"
@@ -69,8 +95,20 @@ class MainWindowViewModel: ObservableObject {
     @Published var touchBarItems: [String] = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "mode", "temp", "fan", "load", "battery", "freq", "memory", "wattage", "network", "refresh"]
     @Published var batteryThreshold: Int = 30
 
+    /// Numeric values for gauges
+    @Published var cpuTempValue: Double = 0
+    @Published var cpuLoadValue: Double = 0
+    @Published var fanSpeedValue: Double = 0
+    @Published var wattageValue: Double = 0
+    @Published var cpuFreqValue: Double = 0
+
+    /// History buffer for Charts
+    @Published var tempHistory: [DataPoint] = []
+    @Published var loadHistory: [DataPoint] = []
+
     private let ipcClient = IPCClient()
     private var timer: Timer?
+    private var sampleIndex: Int = 0
 
     init() {
         startMonitoring()
@@ -85,73 +123,87 @@ class MainWindowViewModel: ObservableObject {
 
     func refreshStatus() {
         let daemonStatus = checkDaemonRunning()
-        
-        DispatchQueue.main.async {
-            self.isDaemonRunning = daemonStatus
-        }
-
+        DispatchQueue.main.async { self.isDaemonRunning = daemonStatus }
         guard let status = ipcClient.getStatus() else { return }
 
-        DispatchQueue.main.async {
-            withAnimation(.linear(duration: 0.3)) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.8)) {
                 self.isTurboBoostEnabled = status.tbEnabled
-                self.cpuTemp = status.cpuTemp != nil ? String(format: "%.1f°C", status.cpuTemp!) : "—"
-                
+                self.currentMode = status.mode
+
+                // CPU Temp
+                if let t = status.cpuTemp {
+                    self.cpuTemp = String(format: "%.1f°C", t)
+                    self.cpuTempValue = t
+                } else {
+                    self.cpuTemp = "—"
+                    self.cpuTempValue = 0
+                }
+
+                // Fan
                 if let fans = status.fanSpeeds, !fans.isEmpty {
+                    let avg = Double(fans.reduce(0, +)) / Double(fans.count)
                     self.fanSpeed = fans.map { "\($0)" }.joined(separator: " / ") + " rpm"
+                    self.fanSpeedValue = avg
                 } else {
                     self.fanSpeed = "—"
+                    self.fanSpeedValue = 0
                 }
-                
+
+                // CPU Load
                 self.cpuLoad = String(format: "%.1f%%", status.cpuLoad)
+                self.cpuLoadValue = status.cpuLoad
+
+                // Frequency
+                self.cpuFreqValue = status.cpuFreq > 0 ? status.cpuFreq : 2.30
                 self.cpuFrequency = status.cpuFreq > 0 ? String(format: "%.2f GHz", status.cpuFreq) : "2.30 GHz"
-                self.wattage = String(format: "%.1fW", status.wattage)
-                
-                func formatNet(_ bytesPerSec: Double) -> String {
-                    if bytesPerSec >= 1024 * 1024 {
-                        return String(format: "%.1f MB/s", bytesPerSec / (1024 * 1024))
-                    } else if bytesPerSec >= 1024 {
-                        return String(format: "%.1f KB/s", bytesPerSec / 1024)
-                    } else {
-                        return String(format: "%.0f B/s", bytesPerSec)
-                    }
+
+                // Wattage
+                self.wattageValue = status.wattage
+                self.wattage = String(format: "%.1f W", status.wattage)
+
+                // Network
+                func formatNet(_ bps: Double) -> String {
+                    if bps >= 1024 * 1024 { return String(format: "%.1f MB/s", bps / (1024 * 1024)) }
+                    if bps >= 1024 { return String(format: "%.1f KB/s", bps / 1024) }
+                    return String(format: "%.0f B/s", bps)
                 }
-                self.netSpeed = "↓\(formatNet(status.netIn)) ↑\(formatNet(status.netOut))"
-                
-                self.currentMode = status.mode
-                self.isTouchBarEnabled = UserDefaults.standard.bool(forKey: "isTouchBarEnabled")
-                self.touchBarItems = UserDefaults.standard.stringArray(forKey: "touchBarItems") ?? ["tbState", "mode", "temp", "fan", "load", "battery", "freq", "memory", "wattage", "network", "refresh"]
+                self.netSpeed = "↓\(formatNet(status.netIn))  ↑\(formatNet(status.netOut))"
+
+                // History
+                self.sampleIndex += 1
+                let now = Date()
+                self.tempHistory.append(DataPoint(time: now, value: status.cpuTemp ?? 0, label: "Temp"))
+                self.loadHistory.append(DataPoint(time: now, value: status.cpuLoad, label: "Load"))
+                if self.tempHistory.count > 60 { self.tempHistory.removeFirst() }
+                if self.loadHistory.count > 60 { self.loadHistory.removeFirst() }
             }
         }
     }
-    
+
     func toggleTurboBoost() {
         let newState = !isTurboBoostEnabled
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let success = self?.ipcClient.setTurboBoost(enabled: newState) ?? false
+            guard let self = self else { return }
+            let success = self.ipcClient.setTurboBoost(enabled: newState)
             if success {
                 DispatchQueue.main.async {
-                    withAnimation(.linear(duration: 0.3)) {
-                        self?.isTurboBoostEnabled = newState
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        self.isTurboBoostEnabled = newState
                     }
                 }
             }
         }
     }
-    
+
     func setMode(_ mode: String, config: [String: Any] = [:]) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let success = self?.ipcClient.setMode(mode, config: config) ?? false
-            if success {
-                DispatchQueue.main.async {
-                    withAnimation(.linear(duration: 0.3)) {
-                        self?.currentMode = mode
-                    }
-                }
-            }
+            guard let self = self else { return }
+            _ = self.ipcClient.setMode(mode, config: config)
         }
     }
-    
+
     func saveTouchBarConfig() {
         UserDefaults.standard.set(isTouchBarEnabled, forKey: "isTouchBarEnabled")
         UserDefaults.standard.set(touchBarItems, forKey: "touchBarItems")
@@ -159,114 +211,323 @@ class MainWindowViewModel: ObservableObject {
     }
 
     private func checkDaemonRunning() -> Bool {
-        if FileManager.default.fileExists(atPath: "/tmp/tbcontrol.sock") {
-            return true
-        }
-        return false
+        FileManager.default.fileExists(atPath: "/tmp/tbcontrol.sock")
     }
-}
 
-struct DashboardView: View {
-    @ObservedObject var viewModel: MainWindowViewModel
-    
-    var modeDisplayName: String {
-        switch viewModel.currentMode {
-        case "auto_temp": return "Auto (Temperature)"
-        case "auto_battery": return "Auto (Battery)"
-        case "auto_load": return "Auto (Load)"
-        case "auto_fan": return "Auto (Fan)"
+    func modeDisplayName(_ mode: String) -> String {
+        switch mode {
+        case "auto_temp": return "Temperature"
+        case "auto_battery": return "Battery"
+        case "auto_load": return "Load"
+        case "auto_fan": return "Fan"
         case "manual": return "Manual"
         default: return "Unknown"
         }
     }
+}
+
+// MARK: - Data Models
+
+struct DataPoint: Identifiable {
+    let id = UUID()
+    let time: Date
+    let value: Double
+    let label: String
+}
+
+// MARK: - Dashboard
+
+struct DashboardView: View {
+    @ObservedObject var viewModel: MainWindowViewModel
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                Text("System Dashboard")
-                    .font(.system(size: 28, weight: .bold, design: .monospaced))
+                // Header
+                header
 
                 if !viewModel.isDaemonRunning {
-                    Text("⚠️ Daemon is not running or not installed.")
-                        .foregroundColor(.red)
-                        .padding()
-                        .background(Color.red.opacity(0.1))
-                        .cornerRadius(8)
+                    daemonOfflineBanner
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140))], spacing: 20) {
-                    StatCard(title: "CPU Temp", value: viewModel.cpuTemp, icon: "thermometer", color: .orange)
-                    StatCard(title: "Fan Speed", value: viewModel.fanSpeed, icon: "fanblades", color: Color(NSColor.systemTeal))
-                    StatCard(title: "CPU Load", value: viewModel.cpuLoad, icon: "cpu", color: .purple)
-                    StatCard(title: "Frequency", value: viewModel.cpuFrequency, icon: "speedometer", color: .green)
-                    StatCard(title: "Power", value: viewModel.wattage, icon: "bolt.fill", color: .yellow)
-                    StatCard(title: "Network", value: viewModel.netSpeed, icon: "network", color: .blue)
+                // Gauge Row
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], spacing: 16) {
+                    GaugeCard(
+                        title: "CPU Temperature",
+                        value: viewModel.cpuTempValue,
+                        unit: "°C",
+                        range: 0...120,
+                        gradient: Gradient(colors: [.cyan, .mint, .yellow, .red]),
+                        icon: "thermometer.medium",
+                        symbol: viewModel.cpuTemp
+                    )
+                    GaugeCard(
+                        title: "CPU Load",
+                        value: viewModel.cpuLoadValue,
+                        unit: "%",
+                        range: 0...100,
+                        gradient: Gradient(colors: [.green, .yellow, .orange, .red]),
+                        icon: "cpu",
+                        symbol: viewModel.cpuLoad
+                    )
+                    GaugeCard(
+                        title: "Fan Speed",
+                        value: viewModel.fanSpeedValue,
+                        unit: " rpm",
+                        range: 0...7000,
+                        gradient: Gradient(colors: [.teal, .blue, .indigo]),
+                        icon: "fanblades.fill",
+                        symbol: viewModel.fanSpeed
+                    )
+                    GaugeCard(
+                        title: "Power Draw",
+                        value: viewModel.wattageValue,
+                        unit: "W",
+                        range: 0...120,
+                        gradient: Gradient(colors: [.yellow, .orange, .red]),
+                        icon: "bolt.fill",
+                        symbol: viewModel.wattage
+                    )
                 }
-                .padding(.top, 10)
+                .padding(.horizontal)
 
-                Divider()
+                // Freq + Network Row
+                gridRow
 
-                VStack(spacing: 15) {
-                    HStack {
-                        Text("Turbo Boost:")
-                            .font(.system(.headline, design: .monospaced))
-                        Text(viewModel.isTurboBoostEnabled ? "Enabled (🔥)" : "Disabled (🧊)")
-                            .foregroundColor(viewModel.isTurboBoostEnabled ? .red : .blue)
-                            .fontWeight(.bold)
-                            .font(.system(.body, design: .monospaced))
-                    }
-
-                    Button(action: {
-                        viewModel.toggleTurboBoost()
-                    }) {
-                        Text(viewModel.isTurboBoostEnabled ? "Disable Turbo Boost" : "Enable Turbo Boost")
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 20)
-                            .foregroundColor(.white)
-                            .background(viewModel.isTurboBoostEnabled ? Color.blue : Color.red)
-                            .cornerRadius(8)
-                            .font(.system(.body, design: .monospaced))
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .disabled(!viewModel.isDaemonRunning)
-                    
-                    Text("Current Mode: \(modeDisplayName)")
-                        .font(.system(.subheadline, design: .monospaced))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.vertical, 10)
+                // Charts
+                chartsSection
             }
             .padding()
+        }
+        .scrollContentBackground(.hidden)
+        .background(.background.opacity(0.3))
+    }
+
+    // MARK: Header
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("System Monitor")
+                    .font(.system(size: 26, weight: .bold))
+                Text(viewModel.modeDisplayName(viewModel.currentMode) + " Mode" + " · " + viewModel.cpuFrequency)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            TBBadge(isEnabled: viewModel.isTurboBoostEnabled)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: Daemon Warning
+
+    private var daemonOfflineBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .symbolRenderingMode(.multicolor)
+            Text("Daemon is not running. Some features require the background service.")
+                .font(.callout)
+            Spacer()
+        }
+        .padding()
+        .background(.red.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(.red.opacity(0.25), lineWidth: 1))
+    }
+
+    // MARK: Grid Row
+
+    private var gridRow: some View {
+        HStack(spacing: 16) {
+            MetricBox(
+                title: "Frequency",
+                value: viewModel.cpuFrequency,
+                icon: "speedometer",
+                color: .indigo,
+                subtitle: "Current Clock"
+            )
+            MetricBox(
+                title: "Network",
+                value: viewModel.netSpeed,
+                icon: "network",
+                color: .blue,
+                subtitle: "Download · Upload"
+            )
+        }
+    }
+
+    // MARK: Charts
+
+    private var chartsSection: some View {
+        VStack(spacing: 16) {
+            ChartCard(
+                title: "CPU Temperature",
+                data: viewModel.tempHistory,
+                color: .orange,
+                gradient: Gradient(colors: [.orange.opacity(0.3), .clear]),
+                domain: 0...120
+            )
+            ChartCard(
+                title: "CPU Load",
+                data: viewModel.loadHistory,
+                color: .purple,
+                gradient: Gradient(colors: [.purple.opacity(0.3), .clear]),
+                domain: 0...100
+            )
         }
     }
 }
 
-struct StatCard: View {
+// MARK: - Gauge Card
+
+struct GaugeCard: View {
+    let title: String
+    let value: Double
+    let unit: String
+    let range: ClosedRange<Double>
+    let gradient: Gradient
+    let icon: String
+    let symbol: String
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.tint)
+                .symbolRenderingMode(.multicolor)
+
+            Gauge(value: value, in: range) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            } currentValueLabel: {
+                Text(symbol)
+                    .font(.system(size: 14, weight: .bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .gaugeStyle(.accessoryCircular)
+            .tint(gradient)
+            .scaleEffect(1.05)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.separator, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+    }
+}
+
+// MARK: - Metric Box
+
+struct MetricBox: View {
     let title: String
     let value: String
     let icon: String
     let color: Color
+    let subtitle: String
 
     var body: some View {
-        VStack(spacing: 8) {
+        HStack(spacing: 16) {
             Image(systemName: icon)
-                .font(.system(size: 24))
-                .foregroundColor(color)
-            Text(title)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundColor(.secondary)
-            Text(value)
-                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
+                .font(.title2)
+                .foregroundStyle(color)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
         }
+        .padding()
         .frame(maxWidth: .infinity)
-        .frame(height: 100)
-        .background(VisualEffectBlur(material: .popover, blendingMode: .withinWindow))
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.separator, lineWidth: 0.5))
     }
 }
+
+// MARK: - Chart Card
+
+struct ChartCard: View {
+    let title: String
+    let data: [DataPoint]
+    let color: Color
+    let gradient: Gradient
+    let domain: ClosedRange<Double>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(.secondary)
+                .padding(.horizontal)
+
+            Chart {
+                ForEach(data) { pt in
+                    LineMark(
+                        x: .value("Time", pt.time),
+                        y: .value(title, pt.value)
+                    )
+                    .foregroundStyle(color)
+                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    .shadow(color: color.opacity(0.3), radius: 3, y: 2)
+
+                    AreaMark(
+                        x: .value("Time", pt.time),
+                        y: .value(title, pt.value)
+                    )
+                    .foregroundStyle(gradient)
+                }
+            }
+            .chartYScale(domain: domain)
+            .chartXAxis(.hidden)
+            .chartYAxis {
+                AxisMarks(position: .trailing, values: .automatic) { val in
+                    AxisValueLabel()
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(height: 100)
+            .padding(.horizontal)
+        }
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.separator, lineWidth: 0.5))
+    }
+}
+
+// MARK: - TB Badge
+
+struct TBBadge: View {
+    let isEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(isEnabled ? Color.red : Color.blue)
+                .frame(width: 8, height: 8)
+            Text(isEnabled ? "Turbo Boost ON" : "Turbo Boost OFF")
+                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(isEnabled ? Color.red.opacity(0.12) : Color.blue.opacity(0.12))
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(isEnabled ? Color.red.opacity(0.3) : Color.blue.opacity(0.3), lineWidth: 1))
+    }
+}
+
+// MARK: - Settings
 
 struct SettingsView: View {
     @ObservedObject var viewModel: MainWindowViewModel
@@ -274,56 +535,78 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section(header: Text("General").font(.system(.headline, design: .monospaced))) {
-                Toggle("Launch at Login", isOn: $autoLaunch)
-                    .onChange(of: autoLaunch) { newValue in
-                        toggleAutoLaunch(enabled: newValue)
-                    }
-                
-                Button("Install Daemon") {
+            Section {
+                Toggle(isOn: $autoLaunch) {
+                    Label("Launch at Login", systemImage: "power")
+                }
+                .onChange(of: autoLaunch) { _, newValue in toggleAutoLaunch(enabled: newValue) }
+
+                Button {
                     installDaemon()
+                } label: {
+                    Label("Install Daemon", systemImage: "arrow.down.circle.dotted")
                 }
                 .disabled(viewModel.isDaemonRunning)
-                
-                Button("Uninstall Daemon") {
+
+                Button {
                     uninstallDaemon()
+                } label: {
+                    Label("Uninstall Daemon", systemImage: "trash")
                 }
                 .disabled(!viewModel.isDaemonRunning)
+            } header: {
+                Label("General", systemImage: "gearshape")
             }
-            
-            Section(header: Text("Modes").font(.system(.headline, design: .monospaced))) {
-                Picker("Current Mode", selection: $viewModel.currentMode) {
-                    Text("Manual").tag("manual")
-                    Text("Auto (Temperature)").tag("auto_temp")
-                    Text("Auto (Battery)").tag("auto_battery")
-                    Text("Auto (Load)").tag("auto_load")
-                    Text("Auto (Fan)").tag("auto_fan")
+
+            Section {
+                Picker(selection: $viewModel.currentMode) {
+                    ForEach([
+                        ("manual", "Manual"),
+                        ("auto_temp", "Auto — Temperature"),
+                        ("auto_battery", "Auto — Battery"),
+                        ("auto_load", "Auto — CPU Load"),
+                        ("auto_fan", "Auto — Fan Speed"),
+                    ], id: \.0) { (tag, label) in
+                        Text(label).tag(tag)
+                    }
+                } label: {
+                    Label("Operation Mode", systemImage: "arrow.triangle.branch")
                 }
-                .pickerStyle(MenuPickerStyle())
-                .onChange(of: viewModel.currentMode) { newValue in
-                    viewModel.setMode(newValue)
-                }
-                
+                .onChange(of: viewModel.currentMode) { _, newValue in viewModel.setMode(newValue) }
+
                 if viewModel.currentMode == "auto_battery" {
                     Picker("Battery Threshold", selection: $viewModel.batteryThreshold) {
-                        Text("10%").tag(10)
-                        Text("20%").tag(20)
-                        Text("30%").tag(30)
-                        Text("40%").tag(40)
-                        Text("50%").tag(50)
+                        ForEach([10, 20, 30, 40, 50], id: \.self) { pct in
+                            Text("\(pct)%").tag(pct)
+                        }
                     }
-                    .onChange(of: viewModel.batteryThreshold) { newValue in
+                    .onChange(of: viewModel.batteryThreshold) { _, newValue in
                         viewModel.setMode("auto_battery", config: ["battery_threshold": newValue])
                     }
                 }
+            } header: {
+                Label("Modes", systemImage: "list.bullet.circle")
+            }
+
+            Section {
+                HStack {
+                    Label("Turbo Boost", systemImage: "bolt.circle.fill")
+                    Spacer()
+                    Toggle("", isOn: $viewModel.isTurboBoostEnabled)
+                        .toggleStyle(.switch)
+                        .onChange(of: viewModel.isTurboBoostEnabled) { _, _ in
+                            viewModel.toggleTurboBoost()
+                        }
+                }
+            } header: {
+                Label("Controls", systemImage: "switch.programmable")
             }
         }
-        .padding()
-        .onAppear {
-            syncAutoLaunchState()
-        }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .onAppear { syncAutoLaunchState() }
     }
-    
+
     private func syncAutoLaunchState() {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
@@ -336,173 +619,151 @@ struct SettingsView: View {
         let output = String(data: data, encoding: .utf8) ?? ""
         autoLaunch = output.contains("TBControl")
     }
-    
+
     private func toggleAutoLaunch(enabled: Bool) {
         let appPath = Bundle.main.bundlePath
-        let script: String
-        if !enabled {
-            script = "tell application \"System Events\" to delete login item \"TBControl\""
-        } else {
-            script = "tell application \"System Events\" to make login item at end with properties {path:\"\(appPath)\", name:\"TBControl\", hidden:false}"
-        }
-        
-        let appleScript = NSAppleScript(source: script)
-        appleScript?.executeAndReturnError(nil)
+        let script = enabled
+            ? "tell application \"System Events\" to make login item at end with properties {path:\"\(appPath)\", name:\"TBControl\", hidden:false}"
+            : "tell application \"System Events\" to delete login item \"TBControl\""
+        NSAppleScript(source: script)?.executeAndReturnError(nil)
     }
-    
+
     private func installDaemon() {
         let alert = NSAlert()
         alert.messageText = "Install Daemon"
-        alert.informativeText = "Please use the Menu Bar icon -> 'Install Daemon' option for administrator privileges."
+        alert.informativeText = "Please use the Menu Bar icon → 'Install Daemon' option for administrator privileges."
         alert.runModal()
     }
-    
+
     private func uninstallDaemon() {
-         let alert = NSAlert()
-         alert.messageText = "Uninstall Components"
-         alert.informativeText = "Please use the Menu Bar icon -> 'Uninstall Components' to completely remove the daemon."
-         alert.runModal()
+        let alert = NSAlert()
+        alert.messageText = "Uninstall Components"
+        alert.informativeText = "Please use the Menu Bar icon → 'Uninstall Components' to completely remove the daemon."
+        alert.runModal()
     }
 }
 
+// MARK: - Touch Bar Config
+
 struct TouchBarConfigView: View {
     @ObservedObject var viewModel: MainWindowViewModel
-    let allAvailableItems = [
-        "tbState": "TB Status (🔥/🧊)",
-        "mode": "Operation Mode (🎯)",
-        "temp": "CPU Temp (🌡)",
-        "fan": "Fan Speed (🌀)",
-        "load": "CPU Load (⚡️)",
-        "battery": "Battery (🔋)",
-        "freq": "Frequency (🚀)",
-        "memory": "Memory (🧠)",
-        "wattage": "Power (🔌)",
-        "network": "Network (🌐)",
-        "refresh": "Refresh Rate (⏱)"
+
+    let allItems: [(key: String, label: String, icon: String)] = [
+        ("tbState", "TB Status", "flame"),
+        ("mode", "Operation Mode", "target"),
+        ("temp", "CPU Temperature", "thermometer"),
+        ("fan", "Fan Speed", "fanblades"),
+        ("load", "CPU Load", "cpu"),
+        ("battery", "Battery", "battery.100"),
+        ("freq", "Frequency", "speedometer"),
+        ("memory", "Memory", "memorychip"),
+        ("wattage", "Power Draw", "bolt"),
+        ("network", "Network", "network"),
+        ("refresh", "Refresh Rate", "arrow.clockwise"),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 15) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Touch Bar Configuration")
-                .font(.system(.title, design: .monospaced))
-                .fontWeight(.bold)
-            
-            Toggle("Enable Touch Bar System-Wide", isOn: $viewModel.isTouchBarEnabled)
-                .font(.system(.body, design: .monospaced))
-                .onChange(of: viewModel.isTouchBarEnabled) { _ in
-                    viewModel.saveTouchBarConfig()
-                }
+                .font(.system(size: 22, weight: .bold))
 
-            Text("Select items to display on Touch Bar:")
+            Toggle(isOn: $viewModel.isTouchBarEnabled) {
+                Label("Enable Touch Bar Dashboard", systemImage: "keyboard.badge.ellipsis")
+            }
+            .toggleStyle(.switch)
+            .onChange(of: viewModel.isTouchBarEnabled) { _, _ in viewModel.saveTouchBarConfig() }
+
+            Divider()
+
+            Text("Display Items")
+                .font(.subheadline.weight(.semibold))
                 .foregroundColor(.secondary)
-                .font(.system(.subheadline, design: .monospaced))
-            
+
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(allAvailableItems.keys.sorted(), id: \.self) { key in
-                        Toggle(allAvailableItems[key] ?? key, isOn: Binding(
-                            get: { viewModel.touchBarItems.contains(key) },
-                            set: { isEnabled in
-                                if isEnabled {
-                                    if !viewModel.touchBarItems.contains(key) {
-                                        viewModel.touchBarItems.append(key)
-                                    }
-                                } else {
-                                    viewModel.touchBarItems.removeAll { $0 == key }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 260))], spacing: 8) {
+                    ForEach(allItems, id: \.key) { item in
+                        HStack {
+                            Image(systemName: item.icon)
+                                .foregroundStyle(.tint)
+                                .frame(width: 24)
+                            Text(item.label)
+                            Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { viewModel.touchBarItems.contains(item.key) },
+                                set: { enabled in
+                                    if enabled { viewModel.touchBarItems.append(item.key) }
+                                    else { viewModel.touchBarItems.removeAll { $0 == item.key } }
+                                    viewModel.saveTouchBarConfig()
                                 }
-                                viewModel.saveTouchBarConfig()
-                            }
-                        ))
-                        .padding(.vertical, 2)
+                            ))
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
                     }
                 }
-                .padding(.trailing, 10)
             }
-            
+
             Spacer()
         }
         .padding()
     }
 }
+
+// MARK: - About
 
 struct AboutView: View {
     let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
     @State private var isChecking = false
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
+            Spacer()
+
             Image(nsImage: NSImage(named: "AppIcon") ?? NSImage())
                 .resizable()
-                .frame(width: 80, height: 80)
-            
-            VStack(spacing: 5) {
+                .frame(width: 96, height: 96)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+
+            VStack(spacing: 4) {
                 Text("TBControl")
-                    .font(.system(.title, design: .monospaced))
-                    .fontWeight(.bold)
-                
+                    .font(.system(size: 28, weight: .bold))
                 Text("Version \(version)")
-                    .font(.system(.subheadline, design: .monospaced))
+                    .font(.subheadline)
                     .foregroundColor(.secondary)
             }
-            
+
             Text("A lightweight utility to control Intel Turbo Boost on macOS.")
-                .font(.system(.body, design: .monospaced))
+                .font(.body)
+                .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            HStack(spacing: 20) {
-                Button(action: {
+                .padding(.horizontal, 40)
+
+            HStack(spacing: 16) {
+                Button {
+                    isChecking = true
                     UpdateManager.shared.checkForUpdates(force: true)
-                }) {
-                    HStack {
-                        if isChecking {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text("Check for Updates")
-                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { isChecking = false }
+                } label: {
+                    Label("Check Updates", systemImage: "arrow.down.circle")
                 }
                 .disabled(isChecking)
-                
-                Link("Visit GitHub", destination: URL(string: "https://github.com/BestWaveRock/TBControl")!)
+
+                Link(destination: URL(string: "https://github.com/BestWaveRock/TBControl")!) {
+                    Label("GitHub", systemImage: "arrow.up.forward.app")
+                }
             }
-            
-            Divider()
-            
-            ScrollView {
-                Text("""
-                MIT License
-                
-                Copyright (c) 2026 BestWaveRock
-                
-                Permission is hereby granted, free of charge, to any person obtaining a copy
-                of this software and associated documentation files (the "Software"), to deal
-                in the Software without restriction, including without limitation the rights
-                to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-                copies of the Software, and to permit persons to whom the Software is
-                furnished to do so, subject to the following conditions:
-                
-                The above copyright notice and this permission notice shall be included in all
-                copies or substantial portions of the Software.
-                
-                THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-                IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-                FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-                AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-                LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-                OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-                SOFTWARE.
-                """)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 120)
-            .padding()
-            .background(VisualEffectBlur(material: .popover, blendingMode: .withinWindow))
-            .cornerRadius(8)
-            
+            .buttonStyle(.bordered)
+
             Spacer()
+
+            Text("MIT License · © 2026 BestWaveRock")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
-        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.background.opacity(0.2))
     }
 }
