@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="Resources/Screenshot2.png" width="700" alt="TBControl Settings"/>
+  <img src="Resources/Screenshot2.png" width="280" alt="TBControl Settings"/>
   <br/>
   <em>设置页 — 分组表单 + 模式选择</em>
 </p>
