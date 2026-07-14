@@ -1,112 +1,114 @@
-# TBControl — macOS Turbo Boost Control Tool
+# TBControl — macOS Turbo Boost 控制工具
 
 <p align="center">
-  <img src="Resources/AppIcon.png" width="96" alt="TBControl Icon"/>
+  <img src="Resources/AppIcon.png" width="96" alt="TBControl"/>
 </p>
 
 <p align="center">
-  <img src="Resources/Screenshot.png" width="700" alt="TBControl Dashboard"/>
+  <img src="Resources/Screenshot.png" width="700" alt="TBControl 仪表盘"/>
   <br/>
-  <em>Dashboard — Sidebar Navigation + Gauge + Real-time Charts</em>
+  <em>主界面 — 侧边栏导航 + Gauge 仪表盘 + 实时曲线图</em>
 </p>
 
 <p align="center">
-  <img src="Resources/Screenshot2.png" width="280" alt="TBControl Settings"/>
+  <img src="Resources/Screenshot2.png" width="280" alt="TBControl 设置"/>
   <br/>
-  <em>Settings — Grouped Form with Mode Selection</em>
+  <em>设置页 — 分组表单 + 模式选择</em>
 </p>
 
 <p align="center">
   <img src="Resources/Screenshot3.png" width="400" alt="TBControl Touch Bar"/>
   <br/>
-  <em>Touch Bar Real-time Monitoring</em>
+  <em>Touch Bar 实时监控</em>
 </p>
 
-A lightweight Turbo Boost control utility for Intel Macs. Controls CPU Turbo Boost at the kernel level via a Kext, with multiple intelligent auto modes.
+> **🌐 [English README →](README_EN.md)**
 
-轻量级 Intel Mac 睿频控制工具，通过内核扩展实现 CPU 睿频状态底层控制，支持多种智能自动化模式。
+轻量级 Intel Mac 睿频（Turbo Boost）控制工具，通过内核扩展实现对 CPU 睿频状态的底层控制，支持多种智能自动化模式。
 
 ---
 
-## Features / 功能
+## 功能特点
 
-- **Manual Control** — One-click enable/disable Turbo Boost · 一键启用/禁用
-- **Auto Modes** · 自动模式：
-  - **Temperature** — Disable above 75°C, re-enable below 65°C (10°C hysteresis) · 温度
-  - **CPU Load** — Disable when load ≥ 75% for 10+ seconds · 负载
-  - **Battery** — Disable on battery ≤ 30% · 电池
-  - **Fan** — Disable above 5500 RPM, re-enable below 4000 RPM for 10s · 风扇
-- **Real-time Dashboard** · 实时看板：
-  - **Menu Bar** — CPU temp, fan speed, load, mode · 菜单栏
-  - **Touch Bar** — Frequency, temp, fan, battery, network · Touch Bar 监控
-- **Smart Experience** · 智能化体验：
-  - Native notifications on state changes · 状态通知
-  - Login item auto-launch · 开机自启
-  - Persistent state across restarts · 状态持久化
-- **Production Ready** · 生产级：
-  - One-click uninstall · 一键卸载
-  - Auto version check against GitHub releases · 版本检测
-  - `os_log` integration for Console.app debugging · 系统日志
+- **手动控制** — 一键启用/禁用 Turbo Boost
+- **多种自动模式**：
+  - **温度** — CPU 温度 > 75°C 自动关闭，< 65°C 恢复（10°C 迟滞）
+  - **负载** — CPU 占用 ≥ 75% 持续 10 秒自动关闭
+  - **电池** — 使用电池且电量 ≤ 30% 自动关闭
+  - **风扇** — 风扇转速 > 5500 RPM 自动关闭，< 4000 RPM 持续 10 秒恢复
+- **实时监控看板**：
+  - **菜单栏** — 实时显示 CPU 温度、风扇转速、负载及运行模式
+  - **Touch Bar 监控** — MacBook Pro Touch Bar 上显示频率、温度、风扇、电量、网络等
+- **智能化体验**：
+  - 状态切换时发送原生系统通知
+  - 开机自启支持
+  - 状态跨进程重启持久化
+- **生产级优化**：
+  - 一键卸载（清理 Kext、守护进程及配置）
+  - 自动检测 GitHub 最新 Release
+  - 集成 `os_log` 系统日志
 
-## Compatibility / 兼容性
+## 兼容性
 
-| Requirement | Note |
-|-------------|------|
-| **CPU** | Intel only · 仅 Intel 架构 (MacBook Pro/Air/iMac) |
-| **Touch Bar** | MacBook Pro models with Touch Bar |
-| **OS** | macOS 11.0 (Big Sur) and later |
-| **⚠️ Apple Silicon** | **Not supported** · 不支持 M 系列芯片 |
+| 项目 | 说明 |
+|------|------|
+| **处理器** | 仅 Intel 架构（MacBook Pro/Air/iMac 等） |
+| **Touch Bar** | 支持带 Touch Bar 的 MacBook Pro |
+| **系统** | macOS 11.0 (Big Sur) 及以上 |
+| **⚠️ Apple Silicon** | **不支持** M 系列芯片 |
 
-## Installation / 安装
+## 安装指南
 
-### 1. Prerequisites (Important) / 环境准备
+### 1. 前置准备（重要）
 
-This tool uses a third-party unsigned kernel extension. You must:
+本工具使用了未签名的第三方内核扩展（Kext），您需要：
 
-- **Disable SIP**: Boot into Recovery Mode → Terminal → `csrutil disable`
-- **Allow kext**: macOS 11+ → System Settings → Privacy & Security → allow the extension
+1. **关闭 SIP**：进入恢复模式 → 终端 → `csrutil disable`
+2. **允许内核扩展**：macOS 11+ → 系统设置 → 隐私与安全性 → 手动允许加载
 
-### 2. Build from Source / 编译构建
+### 2. 编译构建
 
 ```bash
-# Clone / 克隆
+# 克隆仓库
 git clone https://github.com/BestWaveRock/TBControl.git
 cd TBControl
 
-# Build App & DMG / 构建
+# 使用构建脚本生成 App 和 DMG
 ./Scripts/build.sh
 ```
 
-Output in `build/TBControl.app` and `build/TBControl.dmg`.
+构建完成后，在 `build/` 目录下可找到 `TBControl.app` 和 `TBControl.dmg`。
 
-### 3. Install / 安装
+### 3. 安装步骤
 
-1. Drag `TBControl.app` to **Applications**
-2. First launch may prompt for admin password to install daemon (`tbcontrold`)
-3. If menu bar shows `⚠️`, check System Settings for kext approval
+1. 将 `TBControl.app` 拖入 `Applications` 文件夹
+2. 首次运行可能需要输入管理员密码以安装守护进程（`tbcontrold`）
+3. 如菜单栏图标显示 `⚠️`，请检查系统设置是否已允许 Kext 加载
 
-## Operation Modes / 运行模式
+## 运行模式详解
 
-| Mode | Behaviour |
-|------|-----------|
-| **Manual** | User-controlled, all auto logic suspended |
-| **Auto — Temp** | TB off when temp > 75°C, on when < 65°C |
-| **Auto — Load** | TB off when CPU ≥ 75% for 10s |
-| **Auto — Battery** | TB off on battery ≤ 30% |
-| **Auto — Fan** | TB off when fan > 5500 RPM, on when < 4000 RPM for 10s |
+| 模式 | 逻辑说明 |
+|------|----------|
+| **手动模式** | 完全由用户手动切换，所有自动逻辑挂起 |
+| **自动(温度)** | 温度 > 75°C 禁用，< 65°C 恢复（10°C 迟滞） |
+| **自动(负载)** | CPU 占用率连续 10 秒 ≥ 75% 时禁用 |
+| **自动(电池)** | 使用电池且电量 ≤ 30% 时禁用 |
+| **自动(风扇)** | 风扇 > 5500 RPM 禁用；< 4000 RPM 达 10 秒恢复 |
 
-## Technical Details / 技术原理
+## 技术原理
 
-- **Kext**: Controls Turbo Boost via `MSR_IA32_MISC_ENABLE` register (bit 38)
-- **SMC**: Reads hardware metrics via IOKit (System Management Controller)
-- **Daemon**: Background process `tbcontrold` handles logic; App is the UI layer
+- **Kext**：通过 `MSR_IA32_MISC_ENABLE` 寄存器第 38 位控制睿频开关
+- **SMC**：通过 IOKit 接口直接与 System Management Controller 通信获取硬件指标
+- **Daemon**：后台守护进程 `tbcontrold` 负责逻辑判定，App 仅作为 UI 展示
 
-## License / 许可证
+## 许可证
 
-MIT License — see [LICENSE](LICENSE).
+MIT License — 详见 [LICENSE](LICENSE)
 
-## Disclaimer / 免责声明
+## 免责声明
 
-This tool performs kernel-level register operations. Use at your own risk. The author is not responsible for any hardware damage or data loss.
+本工具涉及内核级别的寄存器操作。虽然通常是安全的，但作者不对因使用本工具导致的任何硬件损坏或数据丢失负责。
 
-本工具涉及内核级别寄存器操作。作者不对因使用本工具导致的任何硬件损坏或数据丢失负责。
+---
+
+> **🌐 [English README →](README_EN.md)**
