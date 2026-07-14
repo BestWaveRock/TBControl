@@ -1,10 +1,26 @@
 # TBControl - macOS Turbo Boost 控制工具
 
-![App Icon](Resources/AppIcon.icns)
+<p align="center">
+  <img src="Resources/AppIcon.icns" width="96" alt="TBControl Icon"/>
+</p>
 
-![Screenshot](Resources/Screenshot.png)
+<p align="center">
+  <img src="Resources/Screenshot.png" width="700" alt="TBControl Dashboard"/>
+  <br/>
+  <em>主界面 — 侧边栏导航 + Gauge 仪表盘 + 实时 Charts</em>
+</p>
 
-![Screenshot2](Resources/Screenshot2.png)
+<p align="center">
+  <img src="Resources/Screenshot2.png" width="700" alt="TBControl Settings"/>
+  <br/>
+  <em>设置页 — 分组表单 + 模式选择</em>
+</p>
+
+<p align="center">
+  <img src="Resources/Screenshot3.png" width="400" alt="TBControl Touch Bar"/>
+  <br/>
+  <em>Touch Bar 实时监控</em>
+</p>
 
 TBControl 是一款专为 Intel 架构 Mac 设计的轻量级睿频（Turbo Boost）控制工具。它通过内核扩展（Kext）实现对 CPU 睿频状态的底层控制，并提供多种智能自动化模式。
 
