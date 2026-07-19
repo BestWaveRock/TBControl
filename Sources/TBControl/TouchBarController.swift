@@ -172,37 +172,32 @@ class TouchBarController: NSObject, NSTouchBarDelegate {
         let refreshStr = "⏱ \(Int(refreshRate))s"
         
         DispatchQueue.main.async {
-            NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.3
-                context.timingFunction = CAMediaTimingFunction(name: .linear)
-                
-                self.tbStateButton?.title = "\(tbIcon) \(tbText)"
-                self.modeButton?.title = "\(modeIcon) \(modeText)"
-                self.refreshButton?.title = refreshStr
-                self.tempLabel.stringValue = "🌡 \(tempStr)"
-                self.fanLabel.stringValue = "🌀 \(fanStr)"
-                self.loadLabel.stringValue = "⚡️ \(loadStr)"
-                self.batteryLabel.stringValue = "\(battIcon) \(battStr)"
-                self.freqLabel.stringValue = "🚀 \(freqStr)"
-                self.memLabel.stringValue = "🧠 \(memStr)"
-                self.wattLabel.stringValue = "🔌 \(wattStr)"
-                self.netLabel.stringValue = "🌐 \(netStr)"
-                
-                self.tempLabel.sizeToFit()
-                self.fanLabel.sizeToFit()
-                self.loadLabel.sizeToFit()
-                self.batteryLabel.sizeToFit()
-                self.freqLabel.sizeToFit()
-                self.memLabel.sizeToFit()
-                self.wattLabel.sizeToFit()
-                self.netLabel.sizeToFit()
-                self.tbStateButton?.sizeToFit()
-                self.modeButton?.sizeToFit()
-                self.refreshButton?.sizeToFit()
-                
-                self.statsButton?.title = "\(modeIcon)\(tbIcon) \(tempStr)"
-                self.statsButton?.sizeToFit()
-            }
+            self.tbStateButton?.title = "\(tbIcon) \(tbText)"
+            self.modeButton?.title = "\(modeIcon) \(modeText)"
+            self.refreshButton?.title = refreshStr
+            self.tempLabel.stringValue = "🌡 \(tempStr)"
+            self.fanLabel.stringValue = "🌀 \(fanStr)"
+            self.loadLabel.stringValue = "⚡️ \(loadStr)"
+            self.batteryLabel.stringValue = "\(battIcon) \(battStr)"
+            self.freqLabel.stringValue = "🚀 \(freqStr)"
+            self.memLabel.stringValue = "🧠 \(memStr)"
+            self.wattLabel.stringValue = "🔌 \(wattStr)"
+            self.netLabel.stringValue = "🌐 \(netStr)"
+            
+            self.tempLabel.sizeToFit()
+            self.fanLabel.sizeToFit()
+            self.loadLabel.sizeToFit()
+            self.batteryLabel.sizeToFit()
+            self.freqLabel.sizeToFit()
+            self.memLabel.sizeToFit()
+            self.wattLabel.sizeToFit()
+            self.netLabel.sizeToFit()
+            self.tbStateButton?.sizeToFit()
+            self.modeButton?.sizeToFit()
+            self.refreshButton?.sizeToFit()
+            
+            self.statsButton?.title = "\(modeIcon)\(tbIcon) \(tempStr)"
+            self.statsButton?.sizeToFit()
         }
     }
     

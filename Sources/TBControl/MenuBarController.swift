@@ -403,25 +403,25 @@ class MenuBarController: NSObject, UNUserNotificationCenterDelegate, NSMenuDeleg
     }
 
     @objc private func refresh() {
-        let isDaemonRunning = checkDaemonRunning()
-        
-        guard let st = ipcClient.getStatus() else {
+        if let st = ipcClient.getStatus() {
+            let isDaemonRunning = true
+            
+            // Notify if state changed (usually by auto engine)
+            if let last = lastNotifiedState, last != st.tbEnabled {
+                let reason = st.mode == "manual" ? nil : "自动模式 (\(getModeName(st.mode))) 触发"
+                sendNotification(enabled: st.tbEnabled, reason: reason)
+            }
+            lastNotifiedState = st.tbEnabled
+            
+            status = st
+            updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, mode: st.mode, message: nil, daemonRunning: isDaemonRunning)
+            
+            if isTouchBarEnabled {
+                touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode, wattage: st.wattage, netIn: st.netIn, netOut: st.netOut, refreshRate: currentRefreshRate, isCharging: st.isCharging, preciseFreq: st.cpuFreq)
+            }
+        } else {
+            let isDaemonRunning = checkDaemonRunning()
             updateMenuItems(tbState: nil, temp: nil, fanSpeeds: nil, load: nil, mode: nil, message: nil, daemonRunning: isDaemonRunning)
-            return
-        }
-        
-        // Notify if state changed (usually by auto engine)
-        if let last = lastNotifiedState, last != st.tbEnabled {
-            let reason = st.mode == "manual" ? nil : "自动模式 (\(getModeName(st.mode))) 触发"
-            sendNotification(enabled: st.tbEnabled, reason: reason)
-        }
-        lastNotifiedState = st.tbEnabled
-        
-        status = st
-        updateMenuItems(tbState: st.tbEnabled, temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, mode: st.mode, message: nil, daemonRunning: isDaemonRunning)
-        
-        if isTouchBarEnabled {
-            touchBarController?.updateStats(temp: st.cpuTemp, fanSpeeds: st.fanSpeeds, load: st.cpuLoad, tbEnabled: st.tbEnabled, battery: st.batteryLevel, mode: st.mode, wattage: st.wattage, netIn: st.netIn, netOut: st.netOut, refreshRate: currentRefreshRate, isCharging: st.isCharging, preciseFreq: st.cpuFreq)
         }
     }
 
